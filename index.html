@@ -1167,28 +1167,40 @@ async function gEnsureFolders(){
 // ── Upload cover image to Drive, return public URL ──
 async function gUploadCoverToDrive(base64,title){
   if(!base64||!base64.startsWith('data:'))return null;
-  const match=base64.match(/^data:(image\/\w+);base64,(.+)$/);
+  const match=base64.match(/^data:(image\/[\w+]+);base64,(.+)$/s);
   if(!match)return null;
   const mimeType=match[1];
-  const data=match[2];
-  // ensure capas folder
+  const ext=mimeType.split('/')[1].replace('jpeg','jpg');
+  // convert base64 → Blob
+  const bytes=atob(match[2]);
+  const buf=new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++)buf[i]=bytes.charCodeAt(i);
+  const blob=new Blob([buf],{type:mimeType});
+  // ensure capas folder exists
   const capasId=await gFindOrCreateFolder('capas',gFolderId);
-  const filename=(title||'capa').replace(/[^a-z0-9]/gi,'-').toLowerCase().substring(0,40)+'.'+mimeType.split('/')[1];
-  const boundary='fichas_'+Date.now();
-  const meta=JSON.stringify({name:filename,parents:[capasId]});
-  const body=`--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\nContent-Transfer-Encoding: base64\r\n\r\n${data}\r\n--${boundary}--`;
+  const filename=(title||'capa').replace(/[^a-z0-9]/gi,'-').toLowerCase().substring(0,40)+'.'+ext;
+  // multipart upload via FormData (browser sets correct Content-Type + boundary)
+  const meta=new Blob([JSON.stringify({name:filename,parents:[capasId]})],{type:'application/json'});
+  const form=new FormData();
+  form.append('metadata',meta);
+  form.append('file',blob,filename);
   const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
     method:'POST',
-    headers:{Authorization:'Bearer '+gToken,'Content-Type':`multipart/related; boundary=${boundary}`},
-    body
+    headers:{Authorization:'Bearer '+gToken}, // NO Content-Type here — FormData sets it
+    body:form
   });
-  if(!r.ok)return null;
+  if(!r.ok){
+    const err=await r.text();
+    console.error('Drive upload error:',r.status,err);
+    return null;
+  }
   const f=await r.json();
   // make publicly readable
-  await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/permissions`,{
+  const perm=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/permissions`,{
     method:'POST',headers:gH(),
     body:JSON.stringify({role:'reader',type:'anyone'})
   });
+  if(!perm.ok)console.warn('Permission set failed:',await perm.text());
   return `https://drive.google.com/uc?export=view&id=${f.id}`;
 }
 
