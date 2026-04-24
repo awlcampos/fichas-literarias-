@@ -235,6 +235,7 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
       <img class="g-avatar" id="g-avatar" src="" alt="">
       <span class="g-username" id="g-username"></span>
       <button class="g-logout-btn" onclick="gLogout()">Sair</button>
+      <button class="g-logout-btn" onclick="gResetDrive()" title="Redefinir pasta do Drive" style="font-size:10px">🔄 Redefinir pasta</button>
     </div>
   </div>
 </div>
@@ -1100,6 +1101,16 @@ function gLogout(){
   st.textContent='Desconectado.';setTimeout(()=>st.textContent='',2000);
 }
 
+function gResetDrive(){
+  if(!confirm('Isso vai limpar o vínculo com a pasta e planilha do Drive.\nNa próxima vez que fizer login, a pasta será buscada novamente.\n\nSeus dados locais não serão apagados. Continuar?'))return;
+  localStorage.removeItem('g_fid');
+  localStorage.removeItem('g_ssid');
+  gSsId=null;gFolderId=null;gConnected=false;
+  gLogout();
+  const st=document.getElementById('save-status');
+  st.textContent='✓ Vínculo resetado. Faça login novamente.';setTimeout(()=>st.textContent='',4000);
+}
+
 async function gAfterLogin(){
   gSetSync('⏳ Conectando...','busy');
   try{
@@ -1127,10 +1138,14 @@ function gUpdateUI(on){
 
 // ── DRIVE: folder setup ──
 async function gFindOrCreateFolder(name,parentId){
-  const q=`name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
-  const r=await gApi(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
-  if(r.files&&r.files.length>0)return r.files[0].id;
-  // create
+  // search case-insensitive: fetch all folders in parent and compare lowercased
+  const q=`mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+  const r=await gApi(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=100`);
+  if(r.files&&r.files.length>0){
+    const match=r.files.find(f=>f.name.toLowerCase()===name.toLowerCase());
+    if(match)return match.id;
+  }
+  // not found — create
   const c=await gApi('https://www.googleapis.com/drive/v3/files',{
     method:'POST',
     body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder',parents:[parentId]})
