@@ -1050,6 +1050,1552 @@ function gInitClient(){
             gSetSync('⚠️ Popup bloqueado — permita popups para este site','err');
           } else if(resp.error==='access_denied'){
             gSetSync('⚠️ Acesso negado — verifique os usuários de teste no Google Cloud','err');
+          } else if(resp.error==='interaction_required'||resp.error==='login_required'){
+            // silent refresh failed — needs user interaction
+            gSetSync('','');
+            gUpdateUI(false);
+          } else {
+            gSetSync('⚠️ Erro: '+resp.error,'err');
+          }
+          return;
+        }
+        gToken=resp.access_token;
+        // persist token with expiry (expires_in is in seconds, default 3600)
+        const exp=Date.now()+((resp.expires_in||3600)-60)*1000;
+        try{localStorage.setItem('g_token',gToken);localStorage.setItem('g_token_exp',String(exp));}catch(e){}
+        gAfterLogin();
+      },
+      error_callback:(err)=>{
+        console.error('Token client error:',err);
+        if(err.type==='popup_failed_to_open'||err.type==='popup_closed'){
+          gSetSync('⚠️ Popup bloqueado — clique no ícone 🔒 da barra de endereço e permita popups','err');
+        } else {
+          gSetSync('⚠️ Erro ao abrir login: '+err.type,'err');
+        }
+      }
+    });
+  }catch(e){
+    console.error('gInitClient error:',e);
+    setTimeout(gInitClient,1000);
+  }
+}
+
+function gLogin(){
+  if(location.protocol==='file:'){
+    document.getElementById('g-warn').style.display='block';
+    return;
+  }
+  if(!gTokenClient){
+    gSetSync('⏳ Carregando API do Google...','busy');
+    setTimeout(gLogin,1500);
+    return;
+  }
+  gSetSync('⏳ Abrindo login...','busy');
+  try{
+    gTokenClient.requestAccessToken({prompt:gToken?'':'consent'});
+  }catch(e){
+    console.error(e);
+    gSetSync('⚠️ Erro ao abrir login. Verifique se popups estão permitidos.','err');
+  }
+}
+
+function gLogout(){
+  if(gToken)google.accounts.oauth2.revoke(gToken,()=>{});
+  gToken=null;gProfile=null;gConnected=false;
+  localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');localStorage.removeItem('g_profile');
+  gUpdateUI(false);
+  gSetSync('','');
+  const st=document.getElementById('save-status');
+  st.textContent='Desconectado.';setTimeout(()=>st.textContent='',2000);
+}
+
+function gResetDrive(){
+  if(!confirm('Isso vai limpar o vínculo com a pasta e planilha do Drive.\nNa próxima vez que fizer login, a pasta será buscada novamente.\n\nSeus dados locais não serão apagados. Continuar?'))return;
+  localStorage.removeItem('g_fid');
+  localStorage.removeItem('g_ssid');
+  gSsId=null;gFolderId=null;gConnected=false;
+  gLogout();
+  const st=document.getElementById('save-status');
+  st.textContent='✓ Vínculo resetado. Faça login novamente.';setTimeout(()=>st.textContent='',4000);
+}
+
+async function gAfterLogin(){
+  gSetSync('⏳ Conectando...','busy');
+  try{
+    // get profile (use cached if available to avoid extra request)
+    const cached=localStorage.getItem('g_profile');
+    if(cached){try{gProfile=JSON.parse(cached);}catch(e){}}
+    if(!gProfile){
+      const p=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+gToken}});
+      gProfile=await p.json();
+    }
+    try{localStorage.setItem('g_profile',JSON.stringify(gProfile));}catch(e){}
+    gUpdateUI(true);
+    await gSetupStorage();
+  }catch(e){
+    console.error(e);
+    gSetSync('⚠️ '+e.message,'err');
+  }
+}
+
+function gUpdateUI(on){
+  document.getElementById('g-login-btn').style.display=on?'none':'flex';
+  const ui=document.getElementById('g-user-info');ui.style.display=on?'flex':'none';
+  if(on&&gProfile){
+    const av=document.getElementById('g-avatar');
+    if(gProfile.picture){av.src=gProfile.picture;av.style.display='block';}
+    document.getElementById('g-username').textContent=(gProfile.name||'').split(' ')[0];
+  }
+}
+
+// ── DRIVE: folder setup ──
+async function gFindOrCreateFolder(name,parentId){
+  // search case-insensitive: fetch all folders in parent and compare lowercased
+  const q=`mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+  const r=await gApi(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=100`);
+  if(r.files&&r.files.length>0){
+    const match=r.files.find(f=>f.name.toLowerCase()===name.toLowerCase());
+    if(match)return match.id;
+  }
+  // not found — create
+  const c=await gApi('https://www.googleapis.com/drive/v3/files',{
+    method:'POST',
+    body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder',parents:[parentId]})
+  });
+  return c.id;
+}
+
+async function gEnsureFolders(){
+  if(gFolderId)return gFolderId;
+  let pid='root';
+  for(const name of G_FOLDER_PATH){
+    pid=await gFindOrCreateFolder(name,pid);
+  }
+  gFolderId=pid;
+  localStorage.setItem('g_fid',gFolderId);
+  return gFolderId;
+}
+
+// ── Upload cover image to Drive, return public URL ──
+async function gUploadCoverToDrive(base64,title){
+  if(!base64||!base64.startsWith('data:'))return null;
+  const match=base64.match(/^data:(image\/[\w+]+);base64,(.+)$/s);
+  if(!match)return null;
+  const mimeType=match[1];
+  const ext=mimeType.split('/')[1].replace('jpeg','jpg');
+  // convert base64 → Blob
+  const bytes=atob(match[2]);
+  const buf=new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++)buf[i]=bytes.charCodeAt(i);
+  const blob=new Blob([buf],{type:mimeType});
+  // ensure capas folder exists
+  const capasId=await gFindOrCreateFolder('capas',gFolderId);
+  const filename=(title||'capa').replace(/[^a-z0-9]/gi,'-').toLowerCase().substring(0,40)+'.'+ext;
+  // multipart upload via FormData (browser sets correct Content-Type + boundary)
+  const meta=new Blob([JSON.stringify({name:filename,parents:[capasId]})],{type:'application/json'});
+  const form=new FormData();
+  form.append('metadata',meta);
+  form.append('file',blob,filename);
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+gToken}, // NO Content-Type here — FormData sets it
+    body:form
+  });
+  if(!r.ok){
+    const err=await r.text();
+    console.error('Drive upload error:',r.status,err);
+    return null;
+  }
+  const f=await r.json();
+  // make publicly readable
+  const perm=await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/permissions`,{
+    method:'POST',headers:gH(),
+    body:JSON.stringify({role:'reader',type:'anyone'})
+  });
+  if(!perm.ok)console.warn('Permission set failed:',await perm.text());
+  return `https://drive.google.com/uc?export=view&id=${f.id}`;
+}
+
+// ── SHEETS: spreadsheet setup ──
+async function gFindOrCreateSpreadsheet(folderId){
+  // search in folder
+  const q=`name='${G_SS_NAME}' and mimeType='application/vnd.google-apps.spreadsheet' and '${folderId}' in parents and trashed=false`;
+  const r=await gApi(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`);
+  if(r.files&&r.files.length>0)return r.files[0].id;
+  // create spreadsheet
+  const ss=await gApi('https://sheets.googleapis.com/v4/spreadsheets',{
+    method:'POST',
+    body:JSON.stringify({
+      properties:{title:G_SS_NAME},
+      sheets:[
+        {properties:{title:G_SHEET_F}},
+        {properties:{title:G_SHEET_T}}
+      ]
+    })
+  });
+  const ssId=ss.spreadsheetId;
+  // move to folder
+  await fetch(`https://www.googleapis.com/drive/v3/files/${ssId}?addParents=${folderId}&removeParents=root&fields=id`,
+    {method:'PATCH',headers:gH()});
+  // write headers
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${G_SHEET_F}!A1:append?valueInputOption=RAW`,{
+    method:'POST',body:JSON.stringify({values:[G_HEADERS]})
+  });
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${G_SHEET_T}!A1:append?valueInputOption=RAW`,{
+    method:'POST',body:JSON.stringify({values:[G_HEADERS]})
+  });
+  return ssId;
+}
+
+async function gSetupStorage(){
+  gSetSync('⏳ Preparando Drive...','busy');
+  const folderId=await gEnsureFolders();
+  if(!gSsId){
+    gSsId=await gFindOrCreateSpreadsheet(folderId);
+    localStorage.setItem('g_ssid',gSsId);
+  }
+  gConnected=true;
+  gSetSync('⏳ Carregando fichas...','busy');
+  await gLoadAll();
+  gSetSync('✓ Sincronizado com Google','ok');
+}
+
+// ── book → row ──
+function gBookToRow(d){
+  const f=d.fields||{};
+  const fmt=d.fmt?[d.fmt.fisico?'Físico':'',d.fmt.audio?'Audiobook':''].filter(Boolean).join('|')||'':'';
+  return[
+    String(d._k||''),
+    d.btitle||f['f-titulo']||'',
+    f['f-autor']||'',
+    f['f-ano-orig']||'',
+    f['f-ano-lida']||'',
+    f['f-genero']||'',
+    f['f-paginas']||'',
+    fmt,
+    f['f-dataleit']||'',
+    String(d.nota||''),
+    d.ling||'',
+    d.dens||'',
+    f['f-obs']||'',
+    (d.keys||[]).filter(Boolean).join(' | '),
+    (d.pc||[]).filter(Boolean).join(' | '),
+    (d.ps||[]).filter(Boolean).join(' | '),
+    (d.po||[]).filter(Boolean).join(' | '),
+    f['f-resumo']||'',
+    f['f-registro']||'',
+    d.coverURL||'',
+    d.cover||'',
+    f['f-date']||d._s||'',
+    d._s||'',
+    d._t||''
+  ];
+}
+
+// ── row → book ──
+function gRowToBook(row){
+  const g=i=>String(row[i]||'').trim();
+  const split=v=>v?v.split('|').map(x=>x.trim()).filter(Boolean):[];
+  const fmt=g(7);
+  return{
+    v:4,_k:parseInt(g(0))||Date.now(),_t:g(1)||'Sem título',_s:g(22)||g(21)||'',
+    btitle:g(1),
+    fields:{'f-titulo':g(1),'f-autor':g(2),'f-ano-orig':g(3),'f-ano-lida':g(4),'f-genero':g(5),'f-paginas':g(6),'f-dataleit':g(8),'f-obs':g(12),'f-resumo':g(17),'f-registro':g(18),'f-date':g(21)},
+    fmt:{fisico:fmt.toLowerCase().includes('físico')||fmt.toLowerCase().includes('fisico'),audio:fmt.toLowerCase().includes('audiobook')},
+    nota:parseInt(g(9))||null,ling:g(10)||null,dens:g(11)||null,
+    keys:split(g(13)),pc:split(g(14)),ps:split(g(15)),po:split(g(16)),
+    coverURL:g(19),cover:g(20)||null
+  };
+}
+
+// ── READ all from sheet ──
+async function gLoadAll(){
+  if(!gConnected||!gSsId)return;
+  try{
+    // load fichas
+    const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X`);
+    const rows=(r.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
+    const lib=rows.map(gRowToBook);
+    localStorage.setItem('lib',JSON.stringify(lib));
+    // load trash
+    const rt=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_T}!A:X`);
+    const trows=(rt.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
+    const trash=trows.map(r=>{const b=gRowToBook(r);b._deletedAt=String(r[22]||'');return b;});
+    localStorage.setItem('trash',JSON.stringify(trash));
+    renderLib();
+    updateTrashBadge();
+    if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+  }catch(e){
+    console.error('gLoadAll error:',e);
+    gSetSync('⚠️ Erro ao carregar: '+e.message,'err');
+  }
+}
+
+// ── FIND row index by _key ──
+async function gFindRow(sheetName,key){
+  const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${sheetName}!A:A`);
+  const vals=r.values||[];
+  for(let i=1;i<vals.length;i++){
+    if(String(vals[i][0])===String(key))return i+1; // 1-indexed sheet row
+  }
+  return null;
+}
+
+// ── WRITE (append or update) ──
+async function gSaveBook(d){
+  if(!gConnected||!gSsId)return;
+  // if cover is base64 upload to Drive and replace with URL
+  if(d.cover&&d.cover.startsWith('data:')&&!d.coverURL?.includes('drive.google.com')){
+    try{
+      const driveUrl=await gUploadCoverToDrive(d.cover,d.btitle);
+      if(driveUrl){
+        d.coverURL=driveUrl;
+        d.cover=null;
+        // update in localStorage too
+        const lib=getLib();
+        const idx=lib.findIndex(x=>x._k===d._k);
+        if(idx>=0){lib[idx].coverURL=driveUrl;lib[idx].cover=null;setLib(lib);}
+        // update cover display if this is the current book
+        if(document.getElementById('cover-img').src.startsWith('data:')){
+          setCoverDisplay(driveUrl);
+          coverB64=null;coverURL=driveUrl;
+        }
+      }
+    }catch(e){console.warn('Cover upload failed:',e);}
+  }
+  const row=gBookToRow(d);
+  const existingRow=await gFindRow(G_SHEET_F,d._k);
+  if(existingRow){
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A${existingRow}:X${existingRow}?valueInputOption=RAW`,{
+      method:'PUT',body:JSON.stringify({values:[row]})
+    });
+  }else{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X:append?valueInputOption=RAW`,{
+      method:'POST',body:JSON.stringify({values:[row]})
+    });
+  }
+}
+
+// ── DELETE from sheet ──
+async function gDeleteRow(sheetName,key){
+  if(!gConnected||!gSsId)return;
+  const rowIdx=await gFindRow(sheetName,key);
+  if(!rowIdx)return;
+  // get sheet id
+  const meta=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}?fields=sheets.properties`);
+  const sheet=meta.sheets.find(s=>s.properties.title===sheetName);
+  if(!sheet)return;
+  const sheetId=sheet.properties.sheetId;
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}:batchUpdate`,{
+    method:'POST',
+    body:JSON.stringify({requests:[{deleteDimension:{range:{sheetId,dimension:'ROWS',startIndex:rowIdx-1,endIndex:rowIdx}}}]})
+  });
+}
+
+// ── TRASH to sheet ──
+async function gMoveToTrashSheet(d){
+  if(!gConnected||!gSsId)return;
+  // remove from Fichas sheet
+  await gDeleteRow(G_SHEET_F,d._k);
+  // append to Lixeira sheet
+  const row=gBookToRow(d);
+  row[22]=d._deletedAt||new Date().toLocaleDateString('pt-BR');
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_T}!A:A:append?valueInputOption=RAW`,{
+    method:'POST',body:JSON.stringify({values:[row]})
+  });
+}
+
+async function gRestoreFromTrashSheet(d){
+  if(!gConnected||!gSsId)return;
+  await gDeleteRow(G_SHEET_T,d._k);
+  await gSaveBook(d);
+}
+
+// ── Batch sync after import ──
+async function gSyncImportedBooks(newBooks){
+  if(!gConnected||!gSsId||!newBooks.length)return;
+  gSetSync(`⏳ Sincronizando ${newBooks.length} fichas...`,'busy');
+  try{
+    // get existing keys in sheet
+    const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:A`);
+    const existingKeys=new Set((r.values||[]).slice(1).map(row=>String(row[0]||'')));
+    const toSync=newBooks.filter(b=>!existingKeys.has(String(b._k)));
+    if(!toSync.length){gSetSync('✓ Sincronizado','ok');return;}
+    // upload covers to Drive first, then batch append
+    for(const b of toSync){
+      if(b.cover&&b.cover.startsWith('data:')){
+        try{
+          const url=await gUploadCoverToDrive(b.cover,b.btitle);
+          if(url){b.coverURL=url;b.cover=null;}
+        }catch(e){console.warn('cover upload err',e);}
+      }
+    }
+    const rows=toSync.map(gBookToRow);
+    // batch in groups of 10 to avoid request size limits
+    for(let i=0;i<rows.length;i+=10){
+      const batch=rows.slice(i,i+10);
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X:append?valueInputOption=RAW`,{
+        method:'POST',body:JSON.stringify({values:batch})
+      });
+      gSetSync(`⏳ Sincronizando... ${Math.min(i+10,rows.length)}/${rows.length}`,'busy');
+    }
+    // update localStorage with drive URLs
+    const lib=getLib();
+    toSync.forEach(b=>{const idx=lib.findIndex(x=>x._k===b._k);if(idx>=0){lib[idx].coverURL=b.coverURL;lib[idx].cover=b.cover;}});
+    setLib(lib);
+    gSetSync(`✓ ${toSync.length} ficha(s) sincronizadas`,'ok');
+    setTimeout(()=>gSetSync('✓ Sincronizado','ok'),3000);
+  }catch(e){
+    console.error('gSyncImportedBooks error:',e);
+    gSetSync('⚠️ Erro ao sincronizar: '+e.message,'err');
+  }
+}
+
+// ── OVERRIDE saveToLib to also sync ──
+const _origSaveToLib=saveToLib;
+async function saveToLib(){
+  _origSaveToLib();
+  if(gConnected){
+    gSetSync('⏳ Salvando...','busy');
+    try{
+      const lib=getLib();
+      const last=lib[lib.length-1];
+      if(last)await gSaveBook(last);
+      gSetSync('✓ Salvo no Google','ok');
+      setTimeout(()=>gSetSync('✓ Sincronizado','ok'),3000);
+    }catch(e){
+      console.error(e);
+      gSetSync('⚠️ Erro ao salvar: '+e.message,'err');
+    }
+  }
+}
+
+// ── OVERRIDE moveToTrash to also sync ──
+const _origMoveToTrash=moveToTrash;
+async function moveToTrash(k){
+  const item=getLib().find(x=>x._k===k);
+  _origMoveToTrash(k);
+  if(gConnected&&item){
+    try{ await gMoveToTrashSheet(item); }catch(e){console.error('trash sync err:',e);}
+  }
+}
+
+// ── OVERRIDE restoreFromTrash to also sync ──
+const _origRestoreFromTrash=restoreFromTrash;
+async function restoreFromTrash(k){
+  const item=getTrash().find(x=>x._k===k);
+  _origRestoreFromTrash(k);
+  if(gConnected&&item){
+    try{ await gRestoreFromTrashSheet(item); }catch(e){console.error('restore sync err:',e);}
+  }
+}
+
+// ── INIT Google ──
+function gTryRestoreSession(){
+  const storedToken=localStorage.getItem('g_token');
+  const tokenExp=parseInt(localStorage.getItem('g_token_exp')||'0');
+  const storedProfile=localStorage.getItem('g_profile');
+  if(!storedToken)return; // never logged in — show login button
+  if(tokenExp>Date.now()){
+    // token still valid — restore immediately
+    gToken=storedToken;
+    if(storedProfile){try{gProfile=JSON.parse(storedProfile);}catch(e){}}
+    if(gProfile)gUpdateUI(true);
+    gSetSync('⏳ Reconectando...','busy');
+    gSetupStorage().catch(e=>{
+      console.warn('Session restore failed:',e);
+      // token rejected by API — clear and show login
+      localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');
+      gToken=null;gProfile=null;gConnected=false;
+      gUpdateUI(false);gSetSync('','');
+    });
+  } else {
+    // token expired — try silent refresh (no popup)
+    if(storedProfile){try{gProfile=JSON.parse(storedProfile);}catch(e){}}
+    gSetSync('⏳ Atualizando sessão...','busy');
+    try{
+      gTokenClient.requestAccessToken({prompt:''});
+    }catch(e){
+      // silent refresh not possible — clear and show login
+      localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');
+      gToken=null;gProfile=null;gConnected=false;
+      gUpdateUI(false);gSetSync('','');
+    }
+  }
+}
+
+window.addEventListener('load',()=>{
+  if(location.protocol==='file:'){
+    document.getElementById('g-warn').style.display='block';
+  }
+  const tryInit=()=>{
+    if(typeof google==='undefined'){setTimeout(tryInit,400);return;}
+    gInitClient();
+    // after init, try to restore previous session
+    setTimeout(gTryRestoreSession,300);
+  };
+  tryInit();
+});
+
+// ══ INIT ══
+window.addEventListener('load',()=>{
+  try{const d=localStorage.getItem('draft');if(d)restore(JSON.parse(d));else setTimeout(aeAll,100);}
+  catch{setTimeout(aeAll,100);}
+});
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fichas de Leitura</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root {
+  --card-bg: #ede0ff;
+  --pd: #6b35a0;
+  --pm: #8b5bc4;
+  --pl: #e8d8f8;
+  --be: #c8aae8;
+  --bf: #6b35a0;
+  --td: #2a1a3e;
+  --tm: #4a3060;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20px;}
+
+/* ── TOOLBAR ── */
+#toolbar{max-width:1020px;margin:0 auto 14px;display:flex;gap:7px;flex-wrap:wrap;align-items:center;}
+.btn{background:var(--pd);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-family:'Lato',sans-serif;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.3px;transition:background .2s;white-space:nowrap;}
+.btn:hover{background:var(--pm);}
+.btn.sec{background:transparent;border:2px solid var(--pd);color:var(--pd);}
+.btn.sec:hover{background:var(--pl);}
+.btn.active{background:var(--pm);}
+#save-status{font-size:11px;color:#5a3a7a;font-style:italic;margin-left:4px;}
+.tb-sep{width:1px;background:rgba(107,53,160,.3);height:24px;margin:0 2px;}
+/* ── GOOGLE AUTH ── */
+.g-auth-wrap{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.g-login-btn{background:#fff;color:#444;border:1px solid #ccc;border-radius:8px;padding:7px 12px;font-family:'Lato',sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:box-shadow .2s;white-space:nowrap;}
+.g-login-btn:hover{box-shadow:0 2px 8px rgba(0,0,0,.18);}
+.g-user-info{display:none;align-items:center;gap:8px;}
+.g-avatar{width:28px;height:28px;border-radius:50%;border:2px solid var(--pd);object-fit:cover;}
+.g-username{font-size:12px;font-weight:700;color:var(--pd);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.g-logout-btn{background:none;border:1px solid #ddd;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;color:#666;font-family:'Lato',sans-serif;}
+.g-logout-btn:hover{background:#fee;color:#c00;border-color:#faa;}
+.g-sync{font-size:11px;font-style:italic;color:#7a5a9a;}
+.g-sync.ok{color:#2e7d32;}
+.g-sync.err{color:#c62828;}
+.g-sync.busy{color:#e65100;}
+/* localhost warning banner */
+#g-warn{max-width:1020px;margin:0 auto 12px;background:#fff3cd;border-radius:10px;padding:10px 16px;font-size:12px;color:#7b5000;display:none;line-height:1.5;}
+#g-warn code{background:rgba(0,0,0,.08);padding:2px 6px;border-radius:4px;font-family:monospace;}
+
+/* ── LIBRARY PANEL ── */
+#library-panel{max-width:1020px;margin:0 auto 14px;background:rgba(255,255,255,.5);border-radius:12px;padding:14px 16px;display:none;}
+#library-panel h3{font-size:14px;color:var(--pd);margin-bottom:10px;font-weight:700;}
+#library-list{display:flex;flex-wrap:wrap;gap:8px;}
+.lib-item{background:var(--pd);color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;display:flex;align-items:center;gap:8px;}
+.lib-load{cursor:pointer;font-weight:700;text-decoration:underline;}
+.lib-del{cursor:pointer;opacity:.7;font-size:14px;line-height:1;}
+.lib-del:hover{opacity:1;}
+
+/* ════════════════════════════
+   FORM VIEW
+════════════════════════════ */
+#view-form{max-width:1020px;margin:0 auto;background:var(--card-bg);border-radius:16px;padding:22px 26px;box-shadow:0 8px 40px rgba(80,30,120,.25);}
+.card-header{display:flex;justify-content:flex-end;margin-bottom:10px;}
+.date-stamp{font-family:'Playfair Display',serif;font-style:italic;font-size:20px;color:var(--tm);border:none;background:transparent;text-align:right;width:190px;outline:none;resize:none;overflow:hidden;line-height:1.4;}
+.date-stamp:focus{background:rgba(255,255,255,.4);border-radius:6px;}
+.columns{display:grid;grid-template-columns:360px 1fr;gap:20px;}
+.left-col,.right-col{display:flex;flex-direction:column;gap:12px;}
+
+/* COVER */
+.cover-wrap{background:#1a0a2e;border-radius:10px;overflow:hidden;aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;position:relative;}
+.cover-wrap img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;}
+.cover-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:rgba(26,10,46,.65);opacity:0;transition:opacity .2s;cursor:pointer;color:#e0c8f8;font-size:13px;text-align:center;padding:20px;}
+.cover-wrap:hover .cover-overlay{opacity:1;}
+.cover-ph{display:flex;flex-direction:column;align-items:center;gap:8px;color:#9970c0;font-size:13px;text-align:center;padding:20px;cursor:pointer;}
+#cover-input{display:none;}
+/* URL + ISBN row */
+.cover-url-row{display:flex;gap:6px;margin-top:4px;}
+.cover-url-inp{flex:1;border:none;background:rgba(255,255,255,.5);border-radius:8px;font-family:'Lato',sans-serif;font-size:11px;color:var(--td);padding:5px 9px;outline:none;}
+.cover-url-inp:focus{background:rgba(255,255,255,.8);}
+.cover-url-inp::placeholder{color:#a080c0;}
+.isbn-btn{background:var(--pd);color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-family:'Lato',sans-serif;font-weight:700;cursor:pointer;white-space:nowrap;}
+.isbn-btn:hover{background:var(--pm);}
+
+/* BOOK TITLE */
+#f-btitle{font-family:'Lato',sans-serif;font-weight:700;letter-spacing:1.5px;color:var(--td);text-transform:uppercase;line-height:1.3;text-align:center;outline:none;width:100%;min-height:calc(1.3em*2);padding:4px;border-radius:6px;word-break:break-word;overflow-wrap:break-word;font-size:19px;}
+#f-btitle:empty::before{content:attr(data-ph);color:#a080c0;font-style:italic;font-weight:400;letter-spacing:0;text-transform:none;}
+#f-btitle:focus{background:rgba(255,255,255,.4);}
+
+/* SECTION HEADER */
+.sec-hdr{background:var(--pd);color:#fff;font-weight:700;font-size:12px;letter-spacing:1.5px;border-radius:20px;padding:6px 16px;text-transform:uppercase;margin-bottom:8px;display:inline-block;}
+
+/* SECTION */
+.section{background:rgba(255,255,255,.35);border-radius:12px;padding:12px 14px;}
+
+/* FIELD ROWS */
+.frow{display:flex;align-items:flex-start;gap:4px;margin-bottom:5px;font-size:13px;line-height:1.5;}
+.frow:last-child{margin-bottom:0;}
+.flabel{font-weight:700;white-space:nowrap;flex-shrink:0;padding-top:2px;}
+.ata{border:none;background:transparent;font-family:'Lato',sans-serif;font-size:13px;color:var(--td);flex:1;min-width:0;width:100%;border-bottom:1px dashed #b090d8;outline:none;padding:1px 4px;resize:none;overflow:hidden;line-height:1.5;min-height:22px;}
+.ata:focus{border-bottom-color:var(--pd);background:rgba(255,255,255,.5);border-radius:4px;border-bottom:none;}
+.ata2{min-height:calc(1.5em*2+2px);}
+.bta{width:100%;border:none;background:rgba(255,255,255,.3);border-radius:8px;font-family:'Lato',sans-serif;font-size:13px;line-height:1.6;color:var(--td);padding:8px 10px;resize:none;outline:none;overflow:hidden;min-height:70px;}
+.bta:focus{background:rgba(255,255,255,.6);}
+.ata-shrink{min-height:22px;max-height:22px;overflow:hidden;white-space:nowrap;}
+
+/* FORMAT */
+.fmt-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px;padding-top:2px;}
+.fmt-chk{display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;}
+.fmt-bbl{width:16px;height:16px;border-radius:50%;background:var(--be);display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;flex-shrink:0;transition:background .15s;}
+.fmt-chk.on .fmt-bbl{background:var(--bf);}
+.fmt-chk.on .fmt-bbl::after{content:'✕';}
+
+/* NOTA */
+.rlbl{font-weight:700;font-size:12px;margin-bottom:4px;margin-top:6px;}
+.nota-row{display:flex;gap:3px;flex-wrap:nowrap;margin-bottom:6px;align-items:center;}
+.nbbl{width:24px;height:24px;border-radius:50%;background:var(--be);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#8060a8;cursor:pointer;user-select:none;transition:background .15s,color .15s,opacity .2s,filter .2s;opacity:.45;filter:saturate(.5);flex-shrink:0;}
+.nbbl.on{background:var(--bf);color:#fff;opacity:1;filter:none;box-shadow:0 0 0 2px #fff,0 0 0 4px var(--pd);}
+.nota-row.has-sel .nbbl:not(.on){opacity:.22;filter:saturate(.3) blur(.3px);}
+.nbbl:hover:not(.on){opacity:.7;filter:saturate(.8);}
+
+/* OPTION GROUPS */
+.oitem{display:flex;align-items:center;gap:6px;margin-bottom:3px;cursor:pointer;font-size:12.5px;user-select:none;}
+.obbl{width:16px;height:16px;border-radius:50%;background:var(--be);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;transition:background .15s;}
+.oitem.on .obbl{background:var(--bf);}
+.oitem.on .obbl::after{content:'✕';}
+
+/* KEY LIST */
+.key-list{list-style:none;padding:0;}
+.key-list li{display:flex;align-items:flex-start;gap:6px;margin-bottom:4px;}
+.key-list li::before{content:'•';color:var(--pd);font-size:16px;line-height:1.4;flex-shrink:0;font-weight:700;}
+.kta{flex:1;border:none;background:transparent;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;color:var(--td);border-bottom:1px dashed #b090d8;outline:none;padding:1px 4px;resize:none;overflow:hidden;min-height:22px;line-height:1.5;}
+.kta:focus{background:rgba(255,255,255,.5);border-radius:4px;border-bottom:none;}
+
+/* PERSON LIST */
+.psub{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;}
+.pitem{display:flex;align-items:flex-start;gap:6px;margin-bottom:5px;}
+.pitem::before{content:'•';color:var(--pd);flex-shrink:0;line-height:1.7;}
+.pta{flex:1;border:none;background:transparent;font-family:'Lato',sans-serif;font-size:13px;color:var(--td);border-bottom:1px dashed #b090d8;outline:none;padding:1px 4px;resize:none;overflow:hidden;min-height:22px;line-height:1.5;}
+.pta:focus{background:rgba(255,255,255,.5);border-radius:4px;border-bottom:none;}
+.add-btn{background:none;border:1px dashed var(--pm);border-radius:6px;color:var(--pm);font-size:11px;padding:3px 10px;cursor:pointer;margin-top:2px;transition:background .15s;font-family:'Lato',sans-serif;}
+.add-btn:hover{background:rgba(139,91,196,.1);}
+
+/* ════════════════════════════
+   CATALOG VIEW
+════════════════════════════ */
+#view-catalog{display:none;max-width:1020px;margin:0 auto;}
+.cat-header{text-align:center;margin-bottom:20px;}
+.cat-header h2{font-family:'Playfair Display',serif;font-size:28px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3);margin-bottom:4px;}
+.cat-header p{color:#e0d0f8;font-size:13px;}
+.cat-filters{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:20px;}
+.cat-filter-btn{background:rgba(255,255,255,.25);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:20px;padding:5px 14px;font-size:12px;font-family:'Lato',sans-serif;cursor:pointer;transition:background .2s;}
+.cat-filter-btn:hover,.cat-filter-btn.active{background:var(--pd);border-color:var(--pd);}
+.cat-empty{text-align:center;color:#e0d0f8;padding:60px 20px;font-size:16px;}
+.book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:18px;}
+.book-card{background:rgba(255,255,255,.2);backdrop-filter:blur(6px);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s,background .2s;border:1px solid rgba(255,255,255,.15);}
+.book-card:hover{transform:translateY(-6px);box-shadow:0 12px 30px rgba(50,0,100,.35);background:rgba(255,255,255,.35);}
+.bc-cover{aspect-ratio:2/3;background:linear-gradient(135deg,#3d1a6e,#1a0a3e);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;}
+.bc-cover img{width:100%;height:100%;object-fit:cover;}
+.bc-cover-ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;text-align:center;color:#c0a0e0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;line-height:1.3;width:100%;height:100%;}
+.bc-cover-ph-icon{font-size:28px;opacity:.5;}
+.bc-info{padding:10px;}
+.bc-title{font-weight:700;font-size:12px;color:var(--td);text-transform:uppercase;letter-spacing:.5px;line-height:1.3;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.bc-author{font-size:11px;color:var(--tm);margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
+.bc-nota{display:flex;gap:2px;align-items:center;margin-bottom:4px;}
+.bc-bubble{width:14px;height:14px;border-radius:50%;background:var(--be);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#7050a0;}
+.bc-bubble.on{background:var(--bf);color:#fff;}
+.bc-genre{background:rgba(107,53,160,.15);border-radius:10px;padding:2px 8px;font-size:10px;color:var(--pd);font-weight:700;display:inline-block;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bc-date{font-size:10px;color:#8060a8;margin-top:4px;font-style:italic;}
+/* delete X on card */
+.book-card{position:relative;}
+.bc-del-btn{
+  position:absolute;top:6px;right:6px;
+  width:22px;height:22px;border-radius:50%;
+  background:rgba(180,30,30,.85);color:#fff;
+  border:none;font-size:13px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;transition:opacity .18s,transform .18s;
+  z-index:10;flex-shrink:0;
+}
+.book-card:hover .bc-del-btn{opacity:1;}
+.bc-del-btn:hover{transform:scale(1.15);background:rgba(200,20,20,1);}
+/* trash panel */
+#trash-panel{max-width:1020px;margin:0 auto 14px;background:rgba(255,240,240,.6);border-radius:12px;padding:14px 16px;display:none;}
+#trash-panel h3{font-size:14px;color:#a03535;margin-bottom:10px;font-weight:700;}
+#trash-list{display:flex;flex-wrap:wrap;gap:8px;}
+.trash-item{background:#a03535;color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;display:flex;align-items:center;gap:8px;}
+.trash-restore{cursor:pointer;font-weight:700;text-decoration:underline;}
+.trash-perm{cursor:pointer;opacity:.6;font-size:14px;}
+.trash-perm:hover{opacity:1;}
+.trash-empty-msg{font-size:13px;color:#a06060;font-style:italic;}
+
+/* ════════════════════════════
+   PRINT
+════════════════════════════ */
+@media print{
+  @page{size:A4 portrait;margin:0;}
+  html,body{margin:0!important;padding:0!important;background:white!important;}
+  body > *{display:none!important;}
+  #print-wrapper{
+    display:block!important;
+    position:fixed!important;
+    top:0;left:0;
+    width:210mm;height:297mm;
+    overflow:hidden;
+  }
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+}
+</style>
+</head>
+<body>
+
+<!-- ── TOOLBAR ── -->
+<div id="toolbar">
+  <button class="btn active" id="btn-form" onclick="switchView('form')">📋 Ficha</button>
+  <button class="btn sec" id="btn-cat" onclick="switchView('catalog')">🎠 Catálogo</button>
+  <div class="tb-sep"></div>
+  <button class="btn" onclick="saveToLib()">💾 Salvar ficha</button>
+  <button class="btn sec" onclick="toggleLib()">📚 Fichas salvas</button>
+  <button class="btn sec" onclick="novaFicha()">➕ Nova ficha</button>
+  <div class="tb-sep"></div>
+  <label class="btn sec" style="cursor:pointer">⬆️ Importar Excel<input type="file" accept=".xlsx,.xls" onchange="importXLSX(event)" style="display:none"></label>
+  <button class="btn sec" onclick="exportXLSX()">⬇️ Exportar Excel</button>
+  <label class="btn sec" style="cursor:pointer;font-size:10px">JSON ⬆️<input type="file" accept=".json" onchange="importJSON(event)" style="display:none"></label>
+  <button class="btn sec" style="font-size:10px" onclick="exportJSON()">JSON ⬇️</button>
+  <div class="tb-sep"></div>
+  <button class="btn" onclick="printA4()">🖨️ A4</button>
+  <span id="save-status"></span>
+  <div class="g-auth-wrap">
+    <span id="g-sync" class="g-sync"></span>
+    <button class="g-login-btn" id="g-login-btn" onclick="gLogin()">
+      <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Entrar com Google
+    </button>
+    <div class="g-user-info" id="g-user-info">
+      <img class="g-avatar" id="g-avatar" src="" alt="">
+      <span class="g-username" id="g-username"></span>
+      <button class="g-logout-btn" onclick="gLogout()">Sair</button>
+      <button class="g-logout-btn" onclick="gResetDrive()" title="Redefinir pasta do Drive" style="font-size:10px">🔄 Redefinir pasta</button>
+    </div>
+  </div>
+</div>
+
+<div id="g-warn" style="display:none">
+  ⚠️ <strong>Para usar a sincronização com o Google</strong>, abra o arquivo via <code>http://localhost</code>.<br>
+  No terminal, navegue até a pasta do arquivo e rode: <code>python -m http.server 8080</code><br>
+  Depois acesse: <code>http://localhost:8080/ficha-leitura.html</code>
+</div>
+<!-- ── LIBRARY PANEL ── -->
+<div id="library-panel">
+  <h3>📚 Fichas salvas</h3>
+  <div id="library-list"></div>
+</div>
+
+<!-- ══════════════════════════════
+     FORM VIEW
+══════════════════════════════ -->
+<div id="view-form">
+
+  <div class="card-header">
+    <textarea class="date-stamp" id="f-date" rows="1" placeholder="Mês Ano" oninput="ae(this);as()"></textarea>
+  </div>
+
+  <div class="columns">
+    <!-- ESQUERDA -->
+    <div class="left-col">
+
+      <!-- CAPA -->
+      <div class="cover-wrap" id="cover-wrap">
+        <img id="cover-img" src="" alt="" style="display:none">
+        <div class="cover-ph" id="cover-ph" onclick="document.getElementById('cover-input').click()">
+          <svg width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          Clique para adicionar<br>a capa do livro
+        </div>
+        <div class="cover-overlay" onclick="document.getElementById('cover-input').click()">📷 Trocar capa</div>
+        <input type="file" id="cover-input" accept="image/*" onchange="loadCoverFile(event)">
+      </div>
+      <!-- URL / ISBN -->
+      <div class="cover-url-row">
+        <input class="cover-url-inp" id="f-coverurl" type="text" placeholder="Cole a URL da capa  ou  ISBN (ex: 9788535932614)" oninput="as()">
+        <button class="isbn-btn" onclick="fetchByISBN()">🔍 Buscar</button>
+      </div>
+
+      <!-- TÍTULO -->
+      <div id="f-btitle" contenteditable="true" data-ph="TÍTULO DO LIVRO" oninput="shrinkTitle();as()" spellcheck="false"></div>
+
+      <!-- DADOS -->
+      <div class="section">
+        <div class="sec-hdr">Dados do Livro</div>
+        <div class="frow"><span class="flabel">Título:</span><textarea class="ata" id="f-titulo" rows="1" oninput="ae(this);as()"></textarea></div>
+        <div class="frow"><span class="flabel">Autor:</span><textarea class="ata" id="f-autor" rows="1" oninput="ae(this);as()"></textarea></div>
+        <div class="frow"><span class="flabel">Ano da publicação original:</span><textarea class="ata" id="f-ano-orig" rows="1" style="max-width:52px" oninput="ae(this);as()"></textarea></div>
+        <div class="frow"><span class="flabel">Ano da edição lida:</span><textarea class="ata" id="f-ano-lida" rows="1" style="max-width:52px" oninput="ae(this);as()"></textarea></div>
+        <div class="frow"><span class="flabel">Gênero/Área:</span><textarea class="ata ata2" id="f-genero" rows="2" oninput="ae(this);as()"></textarea></div>
+        <div class="frow"><span class="flabel">Páginas/Duração:</span><textarea class="ata" id="f-paginas" rows="1" oninput="ae(this);as()"></textarea></div>
+        <div class="frow">
+          <span class="flabel">Formato:</span>
+          <div class="fmt-row">
+            <span class="fmt-chk" id="fmt-fisico" onclick="togFmt(this)"><span class="fmt-bbl"></span> Livro físico</span>
+            <span class="fmt-chk" id="fmt-audio" onclick="togFmt(this)"><span class="fmt-bbl"></span> Audiobook</span>
+          </div>
+        </div>
+        <div class="frow"><span class="flabel">Data de leitura:</span><textarea class="ata" id="f-dataleit" rows="1" oninput="ae(this);as()"></textarea></div>
+      </div>
+
+      <!-- CLASSIFICAÇÃO -->
+      <div class="section">
+        <div class="sec-hdr">Classificação</div>
+        <div class="rlbl">Nota geral:</div>
+        <div class="nota-row" id="nota-row"></div>
+        <div class="rlbl">Registro da linguagem:</div>
+        <div id="g-ling">
+          <div class="oitem" data-v="natural" onclick="togOpt(this,'g-ling')"><span class="obbl"></span> Natural / acessível</div>
+          <div class="oitem" data-v="cuidado" onclick="togOpt(this,'g-ling')"><span class="obbl"></span> Cuidado / literário</div>
+          <div class="oitem" data-v="classico" onclick="togOpt(this,'g-ling')"><span class="obbl"></span> Clássico / distante</div>
+        </div>
+        <div class="rlbl">Densidade do conteúdo:</div>
+        <div id="g-dens">
+          <div class="oitem" data-v="leve" onclick="togOpt(this,'g-dens')"><span class="obbl"></span> Leve</div>
+          <div class="oitem" data-v="moderada" onclick="togOpt(this,'g-dens')"><span class="obbl"></span> Moderada</div>
+          <div class="oitem" data-v="densa" onclick="togOpt(this,'g-dens')"><span class="obbl"></span> Densa</div>
+        </div>
+        <div class="rlbl" style="margin-top:6px">Obs:</div>
+        <textarea class="ata ata-shrink" id="f-obs" rows="1" placeholder="Observações..." oninput="shrinkObs(this);as()"></textarea>
+      </div>
+
+      <!-- RESUMO -->
+      <div class="section">
+        <div class="sec-hdr">Resumo Objetivo</div>
+        <textarea class="bta" id="f-resumo" rows="5" placeholder="Escreva um resumo objetivo do livro..." oninput="ae(this);as()"></textarea>
+      </div>
+
+    </div><!-- /esquerda -->
+
+    <!-- DIREITA -->
+    <div class="right-col">
+
+      <!-- ELEMENTOS CHAVE -->
+      <div class="section">
+        <div class="sec-hdr">Elementos Chave</div>
+        <ul class="key-list" id="key-list">
+          <li><textarea class="kta" rows="1" placeholder="Elemento chave..." oninput="ae(this);as()"></textarea></li>
+          <li><textarea class="kta" rows="1" placeholder="Elemento chave..." oninput="ae(this);as()"></textarea></li>
+          <li><textarea class="kta" rows="1" placeholder="Elemento chave..." oninput="ae(this);as()"></textarea></li>
+        </ul>
+        <button class="add-btn" onclick="addKey()">+ adicionar elemento</button>
+      </div>
+
+      <!-- PERSONAGENS -->
+      <div class="section">
+        <div class="sec-hdr">Personagens</div>
+        <div class="psub">Personagens Centrais:</div>
+        <div id="p-central">
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+        </div>
+        <button class="add-btn" onclick="addPers('p-central')">+ adicionar personagem</button>
+        <div class="psub">Personagens Secundários:</div>
+        <div id="p-sec">
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+        </div>
+        <button class="add-btn" onclick="addPers('p-sec')">+ adicionar personagem</button>
+        <div class="psub">Outros Personagens:</div>
+        <div id="p-outros">
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+          <div class="pitem"><textarea class="pta" rows="1" placeholder="Nome – descrição breve" oninput="ae(this);as()"></textarea></div>
+        </div>
+        <button class="add-btn" onclick="addPers('p-outros')">+ adicionar personagem</button>
+      </div>
+
+      <!-- REGISTRO -->
+      <div class="section" style="flex:1">
+        <div class="sec-hdr">Registro do Leitor</div>
+        <textarea class="bta" id="f-registro" rows="12" style="min-height:180px" placeholder="Escreva aqui suas impressões pessoais sobre o livro..." oninput="ae(this);as()"></textarea>
+      </div>
+
+    </div><!-- /direita -->
+  </div>
+</div><!-- /view-form -->
+
+<!-- ══════════════════════════════
+     CATALOG VIEW
+══════════════════════════════ -->
+<div id="trash-panel">
+  <h3>🗑️ Lixeira — fichas excluídas</h3>
+  <div id="trash-list"></div>
+</div>
+<div id="view-catalog">
+  <div class="cat-header">
+    <h2>Minha Estante</h2>
+    <p id="cat-count">0 livros registrados</p>
+  </div>
+  <div style="display:flex;justify-content:center;margin-bottom:14px;">
+    <button class="cat-filter-btn" onclick="toggleTrash()" id="trash-toggle-btn" style="background:rgba(160,53,53,.25);border-color:rgba(160,53,53,.4);">🗑️ Lixeira</button>
+  </div>
+  <div class="cat-filters" id="cat-filters"></div>
+  <div class="cat-empty" id="cat-empty" style="display:none">
+    Nenhuma ficha salva ainda.<br>
+    <small>Use o formulário e clique em 💾 Salvar ficha.</small>
+  </div>
+  <div class="book-grid" id="book-grid"></div>
+</div>
+
+<script>
+// ══ AUTO-EXPAND ══
+function ae(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}
+function aeAll(){document.querySelectorAll('textarea').forEach(ae);}
+
+// ══ SHRINK TITLE ══
+const T_MAX=19,T_MIN=10;
+function shrinkTitle(){
+  const el=document.getElementById('f-btitle');
+  el.style.fontSize=T_MAX+'px';
+  const twoH=parseFloat(getComputedStyle(el).lineHeight)*2+8;
+  let fs=T_MAX;
+  while(el.scrollHeight>twoH&&fs>T_MIN){fs--;el.style.fontSize=fs+'px';}
+}
+
+// ══ SHRINK OBS ══
+function shrinkObs(el){
+  const MX=13,MN=8;el.style.fontSize=MX+'px';let fs=MX;
+  const lh=parseFloat(getComputedStyle(el).lineHeight),tgt=lh+4;
+  while(el.scrollHeight>tgt&&fs>MN){fs-=.5;el.style.fontSize=fs+'px';}
+}
+
+// ══ COVER: file ══
+let coverB64=null,coverURL='';
+function loadCoverFile(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    // compress to max 300x450px before storing
+    const img=new Image();
+    img.onload=()=>{
+      const MAX_W=300,MAX_H=450;
+      let w=img.width,h=img.height;
+      const ratio=Math.min(MAX_W/w,MAX_H/h,1);
+      w=Math.round(w*ratio);h=Math.round(h*ratio);
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      coverB64=canvas.toDataURL('image/jpeg',0.82);
+      coverURL='';
+      document.getElementById('f-coverurl').value='';
+      setCoverDisplay(coverB64);as();
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);e.target.value='';
+}
+function setCoverDisplay(src){
+  const img=document.getElementById('cover-img');
+  img.src=src;img.style.display='block';
+  document.getElementById('cover-ph').style.display='none';
+}
+function clearCoverDisplay(){
+  const img=document.getElementById('cover-img');
+  img.src='';img.style.display='none';
+  document.getElementById('cover-ph').style.display='flex';
+}
+
+// ══ COVER: URL input ══
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('f-coverurl').addEventListener('change',function(){
+    const v=this.value.trim();
+    if(!v){clearCoverDisplay();coverURL='';coverB64=null;return;}
+    // if it looks like a pure number/ISBN, suggest using the search button
+    if(/^\d{10,13}$/.test(v)){return;}
+    coverURL=v;coverB64=null;
+    setCoverDisplay(v);as();
+  });
+});
+
+// ══ COVER: ISBN fetch (Google Books + Open Library fallback) ══
+function fetchByISBN(){
+  const raw=document.getElementById('f-coverurl').value.trim().replace(/[-\s]/g,'');
+  if(!raw){alert('Digite um ISBN no campo da capa.');return;}
+  const isbn=raw.replace(/\D/g,'');
+  if(isbn.length<10){alert('ISBN inválido. Use 10 ou 13 dígitos.');return;}
+
+  const btn=document.querySelector('.isbn-btn');
+  btn.textContent='⏳'; btn.disabled=true;
+
+  const titleEl=document.getElementById('f-titulo');
+  const autorEl=document.getElementById('f-autor');
+  const anoLidaEl=document.getElementById('f-ano-lida');
+  const anoOrigEl=document.getElementById('f-ano-orig');
+  const btEl=document.getElementById('f-btitle');
+
+  function done(){ btn.textContent='🔍'; btn.disabled=false; }
+
+  function applyCover(src){
+    if(!src){tryOpenLibrary();return;}
+    coverURL=src; coverB64=null;
+    document.getElementById('f-coverurl').value=src;
+    setCoverDisplay(src);
+    as(); done();
+  }
+
+  function applyMeta(title,authors,yearEdition,yearOrig){
+    if(title&&!titleEl.value){titleEl.value=title;ae(titleEl);btEl.innerText=title;shrinkTitle();}
+    if(authors&&!autorEl.value){autorEl.value=authors;ae(autorEl);}
+    if(yearEdition&&!anoLidaEl.value){anoLidaEl.value=yearEdition;}
+    if(yearOrig&&!anoOrigEl.value){anoOrigEl.value=yearOrig;}
+    as();
+  }
+
+  // ── Tentativa 1: Google Books API ──
+  fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`)
+    .then(r=>r.json())
+    .then(data=>{
+      const item=data.items?.[0];
+      if(!item){tryOpenLibrary();return;}
+      const info=item.volumeInfo||{};
+      // cover
+      let img=info.imageLinks?.extraLarge||info.imageLinks?.large||info.imageLinks?.medium||info.imageLinks?.thumbnail||'';
+      // google books returns http, force https and remove curl edge
+      img=img.replace('http://','https://').replace('&edge=curl','').replace('zoom=1','zoom=0');
+      // authors
+      const authors=(info.authors||[]).join(', ');
+      // years
+      const yrEdition=(info.publishedDate||'').match(/\d{4}/)?.[0]||'';
+      // Google Books doesnt have original year directly — try open library for that only
+      applyMeta(info.title, authors, yrEdition, '');
+      if(!anoOrigEl.value) fetchOrigYear(isbn);
+      if(img) applyCover(img);
+      else tryOpenLibrary();
+    })
+    .catch(()=>tryOpenLibrary());
+
+  // ── Tentativa 2: Open Library (fallback) ──
+  function tryOpenLibrary(){
+    fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`)
+      .then(r=>r.json()).then(d=>{
+        const b=d[`ISBN:${isbn}`];
+        if(!b){alert('Livro não encontrado. Verifique o ISBN ou adicione a capa manualmente.');done();return;}
+        const authors=(b.authors||[]).map(a=>a.name).join(', ');
+        const yrEdition=(b.publish_date||'').match(/\d{4}/)?.[0]||'';
+        applyMeta(b.title,authors,yrEdition,'');
+        if(b.works?.length&&!anoOrigEl.value){
+          fetch(`https://openlibrary.org${b.works[0].key}.json`)
+            .then(r=>r.json()).then(w=>{
+              const m=(w.first_publish_date||'').match(/\d{4}/);
+              if(m){anoOrigEl.value=m[0];as();}
+            }).catch(()=>{});
+        }
+        // cover via open library
+        const olCover=`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+        const test=new Image();
+        test.onload=()=>{ if(test.naturalWidth>10) applyCover(olCover); else{alert('Capa não encontrada. Adicione manualmente.');done();} };
+        test.onerror=()=>{alert('Capa não encontrada. Adicione manualmente.');done();};
+        test.src=olCover;
+      })
+      .catch(()=>{alert('Erro ao buscar livro. Verifique sua conexão.');done();});
+  }
+
+  // ── busca ano original via Open Library Works ──
+  function fetchOrigYear(isbn){
+    fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`)
+      .then(r=>r.json()).then(d=>{
+        const b=d[`ISBN:${isbn}`];
+        if(!b||!b.works?.length)return;
+        fetch(`https://openlibrary.org${b.works[0].key}.json`)
+          .then(r=>r.json()).then(w=>{
+            const m=(w.first_publish_date||'').match(/\d{4}/);
+            if(m&&!anoOrigEl.value){anoOrigEl.value=m[0];as();}
+          }).catch(()=>{});
+      }).catch(()=>{});
+  }
+}
+
+// ══ FORMAT TOGGLE ══
+function togFmt(el){el.classList.toggle('on');as();}
+
+// ══ NOTA GERAL ══
+let notaVal=null;
+(function buildNota(){
+  const row=document.getElementById('nota-row');
+  for(let i=1;i<=10;i++){
+    const b=document.createElement('div');b.className='nbbl';b.textContent=i;b.dataset.v=i;
+    b.onclick=()=>{
+      const same=notaVal===i;notaVal=same?null:i;
+      row.querySelectorAll('.nbbl').forEach(x=>x.classList.toggle('on',!same&&+x.dataset.v===i));
+      row.classList.toggle('has-sel',!same);as();
+    };row.appendChild(b);
+  }
+})();
+
+// ══ OPTION GROUPS ══
+function togOpt(el,gid){
+  const was=el.classList.contains('on');
+  document.querySelectorAll('#'+gid+' .oitem').forEach(x=>x.classList.remove('on'));
+  if(!was)el.classList.add('on');as();
+}
+
+// ══ ADD ROWS ══
+function mkTa(cls,ph){const ta=document.createElement('textarea');ta.className=cls;ta.rows=1;ta.placeholder=ph;ta.oninput=function(){ae(this);as();};return ta;}
+function addKey(){const li=document.createElement('li');li.appendChild(mkTa('kta','Elemento chave...'));document.getElementById('key-list').appendChild(li);li.querySelector('textarea').focus();}
+function addPers(cid){const d=document.createElement('div');d.className='pitem';d.appendChild(mkTa('pta','Nome – descrição breve'));document.getElementById(cid).appendChild(d);d.querySelector('textarea').focus();}
+
+// ══ COLLECT ══
+function getTitleText(){const el=document.getElementById('f-btitle');return(el.innerText||el.textContent||'').trim();}
+function collect(){
+  const ids=['f-date','f-titulo','f-autor','f-ano-orig','f-ano-lida','f-genero','f-paginas','f-dataleit','f-obs','f-resumo','f-registro'];
+  const fields={};ids.forEach(id=>{const el=document.getElementById(id);if(el)fields[id]=el.value;});
+  const curUrl=document.getElementById('f-coverurl').value.trim();
+  return{
+    v:4,fields,btitle:getTitleText(),
+    cover:coverB64,coverURL:curUrl||coverURL,
+    fmt:{fisico:document.getElementById('fmt-fisico').classList.contains('on'),audio:document.getElementById('fmt-audio').classList.contains('on')},
+    nota:notaVal,ling:gv('g-ling'),dens:gv('g-dens'),
+    keys:cl('#key-list .kta'),pc:cl('#p-central .pta'),ps:cl('#p-sec .pta'),po:cl('#p-outros .pta')
+  };
+}
+function gv(gid){const s=document.querySelector('#'+gid+' .oitem.on');return s?s.dataset.v:null;}
+function cl(sel){return Array.from(document.querySelectorAll(sel)).map(x=>x.value);}
+
+// ══ RESTORE ══
+function restore(d){
+  if(!d)return;
+  if(d.fields)Object.entries(d.fields).forEach(([id,val])=>{const el=document.getElementById(id);if(el)el.value=val;});
+  document.getElementById('f-btitle').innerText=d.btitle||'';
+  // cover
+  if(d.cover){coverB64=d.cover;coverURL='';document.getElementById('f-coverurl').value='';setCoverDisplay(d.cover);}
+  else if(d.coverURL){coverURL=d.coverURL;coverB64=null;document.getElementById('f-coverurl').value=d.coverURL;setCoverDisplay(d.coverURL);}
+  else{coverB64=null;coverURL='';document.getElementById('f-coverurl').value='';clearCoverDisplay();}
+  if(d.fmt){document.getElementById('fmt-fisico').classList.toggle('on',!!d.fmt.fisico);document.getElementById('fmt-audio').classList.toggle('on',!!d.fmt.audio);}
+  notaVal=d.nota||null;
+  const row=document.getElementById('nota-row');
+  row.querySelectorAll('.nbbl').forEach(b=>b.classList.toggle('on',+b.dataset.v===notaVal));
+  row.classList.toggle('has-sel',notaVal!==null);
+  sv('g-ling',d.ling);sv('g-dens',d.dens);
+  rl('key-list','kta',d.keys||[],'li',3);
+  rl('p-central','pta',d.pc||[],'div',3);
+  rl('p-sec','pta',d.ps||[],'div',3);
+  rl('p-outros','pta',d.po||[],'div',2);
+  setTimeout(()=>{aeAll();shrinkTitle();const obs=document.getElementById('f-obs');if(obs)shrinkObs(obs);},80);
+}
+function sv(gid,val){document.querySelectorAll('#'+gid+' .oitem').forEach(x=>x.classList.toggle('on',x.dataset.v===val));}
+function rl(cid,cls,vals,tag,minRows){
+  const c=document.getElementById(cid);c.innerHTML='';
+  const n=Math.max(vals.length,minRows);
+  for(let i=0;i<n;i++){const w=document.createElement(tag);if(tag==='div')w.className='pitem';const ta=mkTa(cls,cls==='kta'?'Elemento chave...':'Nome – descrição breve');ta.value=vals[i]||'';w.appendChild(ta);c.appendChild(w);}
+}
+
+// ══ AUTO-SAVE ══
+let saveTimer=null;
+function as(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem('draft',JSON.stringify(collect()));}catch{}const st=document.getElementById('save-status');st.textContent='✓ Rascunho salvo';setTimeout(()=>st.textContent='',2000);},800);}
+
+// ══ LIBRARY ══
+function getLib(){try{return JSON.parse(localStorage.getItem('lib')||'[]');}catch{return[];}}
+function setLib(l){try{localStorage.setItem('lib',JSON.stringify(l));}catch{alert('Armazenamento cheio. Exporte o JSON/Excel para backup.');}}
+
+function saveToLib(){
+  const d=collect();
+  const title=d.btitle||d.fields['f-titulo']||'Sem título';
+  d._k=Date.now();d._t=title;d._s=new Date().toLocaleDateString('pt-BR');
+  const lib=getLib();lib.push(d);setLib(lib);renderLib();
+  if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+  const st=document.getElementById('save-status');
+  st.textContent='✓ "'+title+'" salva!';setTimeout(()=>st.textContent='',3000);
+}
+function renderLib(){
+  const lib=getLib(),el=document.getElementById('library-list');el.innerHTML='';
+  if(!lib.length){el.innerHTML='<span style="font-size:13px;color:#7a5a9a;font-style:italic">Nenhuma ficha salva ainda.</span>';return;}
+  lib.forEach(item=>{
+    const d=document.createElement('div');d.className='lib-item';
+    d.innerHTML=`<span class="lib-load" onclick="loadLib(${item._k})">📖 ${item._t} <small style="opacity:.7">(${item._s})</small></span><span class="lib-del" onclick="delLib(${item._k})">✕</span>`;
+    el.appendChild(d);
+  });
+}
+function hasUnsavedContent(){
+  // check if any meaningful field has content
+  const ids=['f-titulo','f-autor','f-resumo','f-registro'];
+  return ids.some(id=>{const el=document.getElementById(id);return el&&el.value.trim().length>0;});
+}
+function loadLib(k){
+  const item=getLib().find(x=>x._k===k);
+  if(!item)return;
+  if(hasUnsavedContent()){
+    if(!confirm('O formulário tem conteúdo não salvo. Carregar essa ficha vai substituir o que está sendo editado. Continuar?'))return;
+  }
+  restore(item);toggleLib();switchView('form');
+}
+function delLib(k){ moveToTrash(k); }
+
+// ══ TRASH ══
+function getTrash(){try{return JSON.parse(localStorage.getItem('trash')||'[]');}catch{return[];}}
+function setTrash(t){try{localStorage.setItem('trash',JSON.stringify(t));}catch{}}
+
+function moveToTrash(k){
+  const lib=getLib();
+  const item=lib.find(x=>x._k===k);
+  if(!item)return;
+  item._deletedAt=new Date().toLocaleDateString('pt-BR');
+  const trash=getTrash();trash.push(item);setTrash(trash);
+  setLib(lib.filter(x=>x._k!==k));
+  renderLib();
+  renderCatalog();
+  // update trash badge
+  updateTrashBadge();
+  const st=document.getElementById('save-status');
+  st.textContent='🗑️ Movido para a lixeira';setTimeout(()=>st.textContent='',2500);
+}
+
+function restoreFromTrash(k){
+  const trash=getTrash();
+  const item=trash.find(x=>x._k===k);
+  if(!item)return;
+  delete item._deletedAt;
+  const lib=getLib();lib.push(item);setLib(lib);
+  setTrash(trash.filter(x=>x._k!==k));
+  renderTrash();renderLib();renderCatalog();updateTrashBadge();
+  const st=document.getElementById('save-status');
+  st.textContent='✅ "'+item._t+'" restaurada!';setTimeout(()=>st.textContent='',2500);
+}
+
+function permanentDelete(k){
+  if(!confirm('Excluir permanentemente? Não poderá ser recuperada.'))return;
+  setTrash(getTrash().filter(x=>x._k!==k));
+  renderTrash();updateTrashBadge();
+}
+
+function renderTrash(){
+  const trash=getTrash();
+  const el=document.getElementById('trash-list');el.innerHTML='';
+  if(!trash.length){el.innerHTML='<span class="trash-empty-msg">Lixeira vazia.</span>';return;}
+  trash.forEach(item=>{
+    const d=document.createElement('div');d.className='trash-item';
+    d.innerHTML=`<span>📖 ${item._t} <small style="opacity:.7">(excluído em ${item._deletedAt||'?'})</small></span><span class="trash-restore" onclick="restoreFromTrash(${item._k})" title="Restaurar">↩️ restaurar</span><span class="trash-perm" onclick="permanentDelete(${item._k})" title="Excluir permanentemente">✕</span>`;
+    el.appendChild(d);
+  });
+}
+
+function toggleTrash(){
+  const p=document.getElementById('trash-panel');
+  const showing=p.style.display==='block';
+  p.style.display=showing?'none':'block';
+  if(!showing)renderTrash();
+}
+
+function updateTrashBadge(){
+  const n=getTrash().length;
+  const btn=document.getElementById('trash-toggle-btn');
+  if(btn)btn.textContent=n>0?`🗑️ Lixeira (${n})`:'🗑️ Lixeira';
+}
+function toggleLib(){const p=document.getElementById('library-panel');p.style.display=p.style.display==='block'?'none':'block';if(p.style.display==='block')renderLib();}
+
+// ══ NOVA FICHA ══
+function novaFicha(){
+  if(!confirm('Limpar o formulário?'))return;
+  coverB64=null;coverURL='';notaVal=null;
+  clearCoverDisplay();document.getElementById('f-coverurl').value='';
+  document.getElementById('f-btitle').innerText='';
+  document.querySelectorAll('textarea').forEach(el=>el.value='');
+  ['fmt-fisico','fmt-audio'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  document.querySelectorAll('.nbbl,.oitem').forEach(x=>x.classList.remove('on'));
+  document.getElementById('nota-row').classList.remove('has-sel');
+  rl('key-list','kta',[],'li',3);rl('p-central','pta',[],'div',3);rl('p-sec','pta',[],'div',3);rl('p-outros','pta',[],'div',2);
+  setTimeout(()=>{aeAll();shrinkTitle();},80);
+}
+
+// ══ EXCEL COLUMNS ══
+const XLS_COLS=['Título do Livro','Autor','Ano Publicação Original','Ano Edição Lida','Gênero/Área','Páginas/Duração','Formato (Físico|Audiobook|Ambos)','Data de Leitura','Nota Geral (1-10)','Registro da Linguagem','Densidade do Conteúdo','Observações','Elementos Chave (separar com |)','Personagens Centrais (separar com |)','Personagens Secundários (separar com |)','Outros Personagens (separar com |)','Resumo Objetivo','Registro do Leitor','URL da Capa','Mês/Ano do Registro'];
+
+function bookToRow(d){
+  const f=d.fields||{};
+  const fmt=d.fmt?[d.fmt.fisico?'Físico':'',d.fmt.audio?'Audiobook':''].filter(Boolean).join('|')||'':'';
+  return[
+    d.btitle||f['f-titulo']||'',f['f-autor']||'',f['f-ano-orig']||'',f['f-ano-lida']||'',
+    f['f-genero']||'',f['f-paginas']||'',fmt,f['f-dataleit']||'',
+    d.nota||'',d.ling||'',d.dens||'',f['f-obs']||'',
+    (d.keys||[]).filter(Boolean).join(' | '),
+    (d.pc||[]).filter(Boolean).join(' | '),
+    (d.ps||[]).filter(Boolean).join(' | '),
+    (d.po||[]).filter(Boolean).join(' | '),
+    f['f-resumo']||'',f['f-registro']||'',
+    d.coverURL||'',f['f-date']||d._s||''
+  ];
+}
+
+function rowToBook(row,idx){
+  const g=i=>String(row[i]||'').trim();
+  const fmt=g(6);const fisico=fmt.toLowerCase().includes('físico')||fmt.toLowerCase().includes('fisico')||fmt.toLowerCase().includes('ambos');
+  const audio=fmt.toLowerCase().includes('audiobook')||fmt.toLowerCase().includes('ambos');
+  const nota=parseInt(g(8))||null;
+  const split=v=>v?v.split('|').map(x=>x.trim()).filter(Boolean):[];
+  return{
+    v:4,_k:Date.now()+idx,_t:g(0)||'Sem título',_s:g(19)||new Date().toLocaleDateString('pt-BR'),
+    btitle:g(0),
+    fields:{'f-titulo':g(0),'f-autor':g(1),'f-ano-orig':g(2),'f-ano-lida':g(3),'f-genero':g(4),'f-paginas':g(5),'f-dataleit':g(7),'f-obs':g(11),'f-resumo':g(16),'f-registro':g(17),'f-date':g(19)},
+    fmt:{fisico,audio},nota,ling:g(9)||null,dens:g(10)||null,
+    keys:split(g(12)),pc:split(g(13)),ps:split(g(14)),po:split(g(15)),
+    coverURL:g(18),cover:null
+  };
+}
+
+// ══ EXPORT XLSX ══
+function exportXLSX(){
+  if(typeof XLSX==='undefined'){alert('SheetJS não carregou. Verifique sua conexão.');return;}
+  const lib=getLib();
+  const ws_data=[XLS_COLS,...lib.map(bookToRow)];
+  const ws=XLSX.utils.aoa_to_sheet(ws_data);
+  // column widths
+  ws['!cols']=[{wch:30},{wch:25},{wch:8},{wch:8},{wch:20},{wch:15},{wch:15},{wch:12},{wch:6},{wch:18},{wch:14},{wch:30},{wch:40},{wch:50},{wch:50},{wch:30},{wch:60},{wch:80},{wch:50},{wch:15}];
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Fichas');
+  XLSX.writeFile(wb,'fichas-leitura.xlsx');
+}
+
+// ══ IMPORT XLSX ══
+function importXLSX(e){
+  if(typeof XLSX==='undefined'){alert('SheetJS não carregou.');return;}
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'binary'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(rows.length<2){alert('Planilha vazia ou sem dados.');return;}
+      // skip header row
+      const dataRows=rows.slice(1).filter(r=>r.some(c=>String(c).trim()));
+      const lib=getLib();
+      // deduplication: skip rows already in library (same title + author)
+      const existingKeys=new Set(lib.map(x=>(x.btitle||x._t||'').toLowerCase()+'|'+(x.fields?.['f-autor']||'').toLowerCase()));
+      const prevKeys=new Set(existingKeys);
+      let added=0,skipped=0;
+      dataRows.forEach((row,i)=>{
+        const book=rowToBook(row,i);
+        const key=(book.btitle||'').toLowerCase()+'|'+(book.fields?.['f-autor']||'').toLowerCase();
+        if(existingKeys.has(key)){skipped++;return;}
+        lib.push(book);existingKeys.add(key);added++;
+      });
+      setLib(lib);renderLib();
+      if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+      const msg=`${added} ficha(s) importada(s).${skipped>0?' '+skipped+' duplicata(s) ignorada(s).':''}`+
+        (gConnected?' Sincronizando com Google Sheets...':' (faça login para sincronizar)');
+      const st=document.getElementById('save-status');
+      st.textContent=msg;setTimeout(()=>st.textContent='',5000);
+      // sync newly added books to Sheets
+      const newlyAdded=lib.filter(x=>!prevKeys.has((x.btitle||x._t||'').toLowerCase()+'|'+(x.fields?.['f-autor']||'').toLowerCase()));
+      if(gConnected)gSyncImportedBooks(newlyAdded);
+    }catch(err){alert('Erro ao ler planilha: '+err.message);}
+  };
+  reader.readAsBinaryString(file);e.target.value='';
+}
+
+// ══ JSON EXPORT / IMPORT ══
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(getLib(),null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='fichas-leitura.json';a.click();
+}
+function importJSON(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);const arr=Array.isArray(data)?data:[data];
+      const lib=getLib();
+      const existingKeys=new Set(lib.map(x=>(x.btitle||x._t||'').toLowerCase()+'|'+(x.fields?.['f-autor']||'').toLowerCase()));
+      const newBooks=[];
+      arr.forEach(item=>{
+        if(!item._k)item._k=Date.now()+Math.random();
+        if(!item._t)item._t=item.btitle||'Importado';
+        if(!item._s)item._s=new Date().toLocaleDateString('pt-BR');
+        const key=(item.btitle||item._t||'').toLowerCase()+'|'+(item.fields?.['f-autor']||'').toLowerCase();
+        if(!existingKeys.has(key)){lib.push(item);existingKeys.add(key);newBooks.push(item);}
+      });
+      setLib(lib);renderLib();
+      if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+      const st=document.getElementById('save-status');
+      st.textContent=newBooks.length+' ficha(s) importada(s)'+(gConnected?' — sincronizando...':'!');
+      setTimeout(()=>st.textContent='',4000);
+      if(gConnected)gSyncImportedBooks(newBooks);
+    }catch{alert('Arquivo inválido.');}
+  };
+  reader.readAsText(file);e.target.value='';
+}
+
+// ══ CATALOG VIEW ══
+let catFilter='all';
+function renderCatalog(){
+  const lib=getLib();
+  const grid=document.getElementById('book-grid');
+  const empty=document.getElementById('cat-empty');
+  const count=document.getElementById('cat-count');
+  count.textContent=lib.length+' livro'+(lib.length!==1?'s':'')+' registrado'+(lib.length!==1?'s':'');
+  // build genre filter
+  buildCatFilters(lib);
+  const filtered=catFilter==='all'?lib:lib.filter(b=>{const g=(b.fields?.['f-genero']||'').toLowerCase();return g.includes(catFilter.toLowerCase());});
+  grid.innerHTML='';
+  if(!filtered.length){empty.style.display='block';return;}
+  empty.style.display='none';
+  filtered.forEach(book=>{
+    const card=document.createElement('div');card.className='book-card';
+    const coverSrc=book.cover||(book.coverURL?book.coverURL:'');
+    const coverHTML=coverSrc
+      ?`<img src="${coverSrc}" alt="capa" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+      :'';
+    const phStyle=coverSrc?'style="display:none"':'';
+    const phTitle=(book.btitle||book._t||'').substring(0,40);
+    // nota bubbles (only show up to nota)
+    let bubblesHTML='';
+    if(book.nota){for(let i=1;i<=10;i++){bubblesHTML+=`<div class="bc-bubble${i===book.nota?' on':''}"></div>`;}}
+    const genero=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
+    card.innerHTML=`
+      <div class="bc-cover">
+        ${coverHTML}
+        <div class="bc-cover-ph" ${phStyle}><span class="bc-cover-ph-icon">📖</span>${phTitle}</div>
+      </div>
+      <div class="bc-info">
+        <div class="bc-title">${book.btitle||book._t||'Sem título'}</div>
+        <div class="bc-author">${book.fields?.['f-autor']||''}</div>
+        ${book.nota?`<div class="bc-nota">${bubblesHTML}</div>`:''}
+        ${genero?`<div class="bc-genre">${genero}</div>`:''}
+        <div class="bc-date">${book._s||''}</div>
+      </div>`;
+    // X delete button
+    const delBtn = document.createElement('button');
+    delBtn.className='bc-del-btn';delBtn.title='Mover para lixeira';delBtn.textContent='✕';
+    delBtn.onclick=(e)=>{e.stopPropagation();moveToTrash(book._k);};
+    card.appendChild(delBtn);
+    card.onclick=()=>{loadLib(book._k);};
+    grid.appendChild(card);
+  });
+}
+function buildCatFilters(lib){
+  const genres=new Set();
+  lib.forEach(b=>{
+    const g=b.fields?.['f-genero']||'';
+    g.split(/[,\n]/).forEach(p=>{const t=p.trim();if(t)genres.add(t.substring(0,25));});
+  });
+  const fc=document.getElementById('cat-filters');fc.innerHTML='';
+  const all=document.createElement('button');all.className='cat-filter-btn'+(catFilter==='all'?' active':'');all.textContent='Todos';all.onclick=()=>{catFilter='all';renderCatalog();};fc.appendChild(all);
+  genres.forEach(g=>{
+    const b=document.createElement('button');b.className='cat-filter-btn'+(catFilter===g?' active':'');b.textContent=g;b.onclick=()=>{catFilter=g;renderCatalog();};fc.appendChild(b);
+  });
+}
+
+// ══ VIEW SWITCH ══
+function switchView(v){
+  document.getElementById('view-form').style.display=v==='form'?'block':'none';
+  document.getElementById('view-catalog').style.display=v==='catalog'?'block':'none';
+  document.getElementById('btn-form').classList.toggle('active',v==='form');
+  document.getElementById('btn-cat').classList.toggle('active',v==='catalog');
+  document.getElementById('btn-form').classList.toggle('sec',v==='catalog');
+  document.getElementById('btn-cat').classList.toggle('sec',v==='form');
+  if(v==='catalog'){renderCatalog();updateTrashBadge();}
+}
+
+// ══ PRINT A4 ══
+function printA4(){
+  // 1. Remove add-buttons and url row from view before capturing
+  const urlRow = document.querySelector('.cover-url-row');
+  if(urlRow) urlRow.style.display='none';
+  document.querySelectorAll('.add-btn').forEach(b=>b.style.display='none');
+
+  // 2. Clone the form
+  const form = document.getElementById('view-form');
+
+  // 3. Calculate scale to fit A4 (794px = 210mm at 96dpi)
+  // We render at current size and scale to fit
+  const formW = form.scrollWidth;
+  const formH = form.scrollHeight;
+  const A4W = 794;   // px at 96dpi
+  const A4H = 1123;  // px at 96dpi
+  const scale = Math.min(A4W / formW, A4H / formH);
+
+  // 4. Create a wrapper div that will be shown in print
+  let wrapper = document.getElementById('print-wrapper');
+  if(!wrapper){ wrapper = document.createElement('div'); wrapper.id='print-wrapper'; document.body.appendChild(wrapper); }
+  wrapper.innerHTML = '';
+  wrapper.style.cssText = 'position:fixed;top:0;left:0;width:210mm;height:297mm;overflow:hidden;display:none;background:white;';
+
+  // 5. Clone form into wrapper, scaled
+  const clone = form.cloneNode(true);
+  clone.style.cssText = `
+    position:absolute;top:0;left:0;
+    transform:scale(${scale});
+    transform-origin:top left;
+    width:${formW}px;
+    border-radius:0;box-shadow:none;
+    margin:0;
+  `;
+  // hide add buttons and url row in clone
+  clone.querySelectorAll('.add-btn').forEach(b=>b.style.display='none');
+  const cu = clone.querySelector('.cover-url-row');
+  if(cu) cu.style.display='none';
+  // fix nota bubbles opacity for print
+  clone.querySelectorAll('.nbbl').forEach(b=>{
+    b.style.opacity = b.classList.contains('on') ? '1' : '0.3';
+    b.style.filter = 'none';
+  });
+  wrapper.appendChild(clone);
+
+  // 6. Print
+  window.addEventListener('afterprint', function onAP(){
+    wrapper.innerHTML=''; wrapper.style.display='none';
+    if(urlRow) urlRow.style.display='';
+    document.querySelectorAll('.add-btn').forEach(b=>b.style.display='');
+    window.removeEventListener('afterprint', onAP);
+  }, {once:true});
+
+  window.print();
+}
+
+
+// ══════════════════════════════════════════════
+// GOOGLE SHEETS INTEGRATION — Fichas Literárias
+// ══════════════════════════════════════════════
+const G_CLIENT_ID = '613733320980-vir40mr0l0pbuakoabb23j3p9a9jhlph.apps.googleusercontent.com';
+const G_SCOPES    = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile';
+const G_SS_NAME   = 'fichas-literarias';
+const G_SHEET_F   = 'Fichas';
+const G_SHEET_T   = 'Lixeira';
+const G_FOLDER_PATH = ['Projetos','Fichas Literárias'];
+
+// headers for sheets (col A = _key, then all data)
+const G_HEADERS = ['_key','Título','Autor','Ano Orig','Ano Lida','Gênero','Páginas','Formato','Data Leitura','Nota','Linguagem','Densidade','Obs','Elementos Chave','Pers.Centrais','Pers.Secundários','Outros Pers.','Resumo','Registro','URL Capa','Capa Base64','Mês/Ano','_savedAt','_title'];
+
+let gTokenClient = null;
+let gToken       = null;
+let gProfile     = null;
+let gSsId        = localStorage.getItem('g_ssid')  || null;
+let gFolderId    = localStorage.getItem('g_fid')   || null;
+let gConnected   = false;
+
+// ── helpers ──
+function gH(){ return {Authorization:'Bearer '+gToken,'Content-Type':'application/json'}; }
+function gSetSync(msg,cls){const el=document.getElementById('g-sync');if(!el)return;el.textContent=msg;el.className='g-sync'+(cls?' '+cls:'');}
+async function gApi(url,opts={}){
+  const r=await fetch(url,{headers:gH(),...opts});
+  if(!r.ok){const t=await r.text();throw new Error(r.status+': '+t.substring(0,120));}
+  return r.json();
+}
+
+// ── AUTH ──
+function gInitClient(){
+  if(typeof google==='undefined'){setTimeout(gInitClient,500);return;}
+  try{
+    gTokenClient=google.accounts.oauth2.initTokenClient({
+      client_id:G_CLIENT_ID,
+      scope:G_SCOPES,
+      callback:(resp)=>{
+        if(resp.error){
+          console.error('OAuth error:',resp);
+          if(resp.error==='popup_blocked_by_browser'){
+            gSetSync('⚠️ Popup bloqueado — permita popups para este site','err');
+          } else if(resp.error==='access_denied'){
+            gSetSync('⚠️ Acesso negado — verifique os usuários de teste no Google Cloud','err');
           } else {
             gSetSync('⚠️ Erro: '+resp.error,'err');
           }
