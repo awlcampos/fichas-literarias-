@@ -824,6 +824,7 @@ function importXLSX(e){
       const lib=getLib();
       // deduplication: skip rows already in library (same title + author)
       const existingKeys=new Set(lib.map(x=>(x.btitle||x._t||'').toLowerCase()+'|'+(x.fields?.['f-autor']||'').toLowerCase()));
+      const prevKeys=new Set(existingKeys);
       let added=0,skipped=0;
       dataRows.forEach((row,i)=>{
         const book=rowToBook(row,i);
@@ -833,7 +834,13 @@ function importXLSX(e){
       });
       setLib(lib);renderLib();
       if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
-      alert(`${added} ficha(s) importada(s).${skipped>0?' '+skipped+' duplicata(s) ignorada(s).':''}`);
+      const msg=`${added} ficha(s) importada(s).${skipped>0?' '+skipped+' duplicata(s) ignorada(s).':''}`+
+        (gConnected?' Sincronizando com Google Sheets...':' (faça login para sincronizar)');
+      const st=document.getElementById('save-status');
+      st.textContent=msg;setTimeout(()=>st.textContent='',5000);
+      // sync newly added books to Sheets
+      const newlyAdded=lib.filter(x=>!prevKeys.has((x.btitle||x._t||'').toLowerCase()+'|'+(x.fields?.['f-autor']||'').toLowerCase()));
+      if(gConnected)gSyncImportedBooks(newlyAdded);
     }catch(err){alert('Erro ao ler planilha: '+err.message);}
   };
   reader.readAsBinaryString(file);e.target.value='';
@@ -851,10 +858,21 @@ function importJSON(e){
     try{
       const data=JSON.parse(ev.target.result);const arr=Array.isArray(data)?data:[data];
       const lib=getLib();
-      arr.forEach(item=>{if(!item._k)item._k=Date.now()+Math.random();if(!item._t)item._t=item.btitle||'Importado';if(!item._s)item._s=new Date().toLocaleDateString('pt-BR');lib.push(item);});
+      const existingKeys=new Set(lib.map(x=>(x.btitle||x._t||'').toLowerCase()+'|'+(x.fields?.['f-autor']||'').toLowerCase()));
+      const newBooks=[];
+      arr.forEach(item=>{
+        if(!item._k)item._k=Date.now()+Math.random();
+        if(!item._t)item._t=item.btitle||'Importado';
+        if(!item._s)item._s=new Date().toLocaleDateString('pt-BR');
+        const key=(item.btitle||item._t||'').toLowerCase()+'|'+(item.fields?.['f-autor']||'').toLowerCase();
+        if(!existingKeys.has(key)){lib.push(item);existingKeys.add(key);newBooks.push(item);}
+      });
       setLib(lib);renderLib();
       if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
-      alert(arr.length+' ficha(s) importada(s)!');
+      const st=document.getElementById('save-status');
+      st.textContent=newBooks.length+' ficha(s) importada(s)'+(gConnected?' — sincronizando...':'!');
+      setTimeout(()=>st.textContent='',4000);
+      if(gConnected)gSyncImportedBooks(newBooks);
     }catch{alert('Arquivo inválido.');}
   };
   reader.readAsText(file);e.target.value='';
@@ -1020,25 +1038,57 @@ async function gApi(url,opts={}){
 // ── AUTH ──
 function gInitClient(){
   if(typeof google==='undefined'){setTimeout(gInitClient,500);return;}
-  gTokenClient=google.accounts.oauth2.initTokenClient({
-    client_id:G_CLIENT_ID,
-    scope:G_SCOPES,
-    callback:(resp)=>{
-      if(resp.error){gSetSync('⚠️ Erro de autenticação','err');console.error(resp);return;}
-      gToken=resp.access_token;
-      gAfterLogin();
-    }
-  });
+  try{
+    gTokenClient=google.accounts.oauth2.initTokenClient({
+      client_id:G_CLIENT_ID,
+      scope:G_SCOPES,
+      callback:(resp)=>{
+        if(resp.error){
+          console.error('OAuth error:',resp);
+          if(resp.error==='popup_blocked_by_browser'){
+            gSetSync('⚠️ Popup bloqueado — permita popups para este site','err');
+          } else if(resp.error==='access_denied'){
+            gSetSync('⚠️ Acesso negado — verifique os usuários de teste no Google Cloud','err');
+          } else {
+            gSetSync('⚠️ Erro: '+resp.error,'err');
+          }
+          return;
+        }
+        gToken=resp.access_token;
+        gAfterLogin();
+      },
+      error_callback:(err)=>{
+        console.error('Token client error:',err);
+        if(err.type==='popup_failed_to_open'||err.type==='popup_closed'){
+          gSetSync('⚠️ Popup bloqueado — clique no ícone 🔒 da barra de endereço e permita popups','err');
+        } else {
+          gSetSync('⚠️ Erro ao abrir login: '+err.type,'err');
+        }
+      }
+    });
+  }catch(e){
+    console.error('gInitClient error:',e);
+    setTimeout(gInitClient,1000);
+  }
 }
 
 function gLogin(){
-  // check if we're on file:// and warn
   if(location.protocol==='file:'){
     document.getElementById('g-warn').style.display='block';
     return;
   }
-  if(!gTokenClient){alert('Aguarde 2 segundos e tente novamente.');return;}
-  gTokenClient.requestAccessToken({prompt:gToken?'':'consent'});
+  if(!gTokenClient){
+    gSetSync('⏳ Carregando API do Google...','busy');
+    setTimeout(gLogin,1500);
+    return;
+  }
+  gSetSync('⏳ Abrindo login...','busy');
+  try{
+    gTokenClient.requestAccessToken({prompt:gToken?'':'consent'});
+  }catch(e){
+    console.error(e);
+    gSetSync('⚠️ Erro ao abrir login. Verifique se popups estão permitidos.','err');
+  }
 }
 
 function gLogout(){
@@ -1097,6 +1147,34 @@ async function gEnsureFolders(){
   gFolderId=pid;
   localStorage.setItem('g_fid',gFolderId);
   return gFolderId;
+}
+
+// ── Upload cover image to Drive, return public URL ──
+async function gUploadCoverToDrive(base64,title){
+  if(!base64||!base64.startsWith('data:'))return null;
+  const match=base64.match(/^data:(image\/\w+);base64,(.+)$/);
+  if(!match)return null;
+  const mimeType=match[1];
+  const data=match[2];
+  // ensure capas folder
+  const capasId=await gFindOrCreateFolder('capas',gFolderId);
+  const filename=(title||'capa').replace(/[^a-z0-9]/gi,'-').toLowerCase().substring(0,40)+'.'+mimeType.split('/')[1];
+  const boundary='fichas_'+Date.now();
+  const meta=JSON.stringify({name:filename,parents:[capasId]});
+  const body=`--${boundary}\r\nContent-Type: application/json\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${mimeType}\r\nContent-Transfer-Encoding: base64\r\n\r\n${data}\r\n--${boundary}--`;
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+gToken,'Content-Type':`multipart/related; boundary=${boundary}`},
+    body
+  });
+  if(!r.ok)return null;
+  const f=await r.json();
+  // make publicly readable
+  await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/permissions`,{
+    method:'POST',headers:gH(),
+    body:JSON.stringify({role:'reader',type:'anyone'})
+  });
+  return `https://drive.google.com/uc?export=view&id=${f.id}`;
 }
 
 // ── SHEETS: spreadsheet setup ──
@@ -1227,16 +1305,33 @@ async function gFindRow(sheetName,key){
 // ── WRITE (append or update) ──
 async function gSaveBook(d){
   if(!gConnected||!gSsId)return;
+  // if cover is base64 upload to Drive and replace with URL
+  if(d.cover&&d.cover.startsWith('data:')&&!d.coverURL?.includes('drive.google.com')){
+    try{
+      const driveUrl=await gUploadCoverToDrive(d.cover,d.btitle);
+      if(driveUrl){
+        d.coverURL=driveUrl;
+        d.cover=null;
+        // update in localStorage too
+        const lib=getLib();
+        const idx=lib.findIndex(x=>x._k===d._k);
+        if(idx>=0){lib[idx].coverURL=driveUrl;lib[idx].cover=null;setLib(lib);}
+        // update cover display if this is the current book
+        if(document.getElementById('cover-img').src.startsWith('data:')){
+          setCoverDisplay(driveUrl);
+          coverB64=null;coverURL=driveUrl;
+        }
+      }
+    }catch(e){console.warn('Cover upload failed:',e);}
+  }
   const row=gBookToRow(d);
   const existingRow=await gFindRow(G_SHEET_F,d._k);
   if(existingRow){
-    // update existing row
-    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A${existingRow}:append?valueInputOption=RAW&insertDataOption=OVERWRITE`,{
-      method:'POST',body:JSON.stringify({values:[row]})
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A${existingRow}:X${existingRow}?valueInputOption=RAW`,{
+      method:'PUT',body:JSON.stringify({values:[row]})
     });
   }else{
-    // append new row
-    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:A:append?valueInputOption=RAW`,{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X:append?valueInputOption=RAW`,{
       method:'POST',body:JSON.stringify({values:[row]})
     });
   }
@@ -1275,6 +1370,46 @@ async function gRestoreFromTrashSheet(d){
   if(!gConnected||!gSsId)return;
   await gDeleteRow(G_SHEET_T,d._k);
   await gSaveBook(d);
+}
+
+// ── Batch sync after import ──
+async function gSyncImportedBooks(newBooks){
+  if(!gConnected||!gSsId||!newBooks.length)return;
+  gSetSync(`⏳ Sincronizando ${newBooks.length} fichas...`,'busy');
+  try{
+    // get existing keys in sheet
+    const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:A`);
+    const existingKeys=new Set((r.values||[]).slice(1).map(row=>String(row[0]||'')));
+    const toSync=newBooks.filter(b=>!existingKeys.has(String(b._k)));
+    if(!toSync.length){gSetSync('✓ Sincronizado','ok');return;}
+    // upload covers to Drive first, then batch append
+    for(const b of toSync){
+      if(b.cover&&b.cover.startsWith('data:')){
+        try{
+          const url=await gUploadCoverToDrive(b.cover,b.btitle);
+          if(url){b.coverURL=url;b.cover=null;}
+        }catch(e){console.warn('cover upload err',e);}
+      }
+    }
+    const rows=toSync.map(gBookToRow);
+    // batch in groups of 10 to avoid request size limits
+    for(let i=0;i<rows.length;i+=10){
+      const batch=rows.slice(i,i+10);
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X:append?valueInputOption=RAW`,{
+        method:'POST',body:JSON.stringify({values:batch})
+      });
+      gSetSync(`⏳ Sincronizando... ${Math.min(i+10,rows.length)}/${rows.length}`,'busy');
+    }
+    // update localStorage with drive URLs
+    const lib=getLib();
+    toSync.forEach(b=>{const idx=lib.findIndex(x=>x._k===b._k);if(idx>=0){lib[idx].coverURL=b.coverURL;lib[idx].cover=b.cover;}});
+    setLib(lib);
+    gSetSync(`✓ ${toSync.length} ficha(s) sincronizadas`,'ok');
+    setTimeout(()=>gSetSync('✓ Sincronizado','ok'),3000);
+  }catch(e){
+    console.error('gSyncImportedBooks error:',e);
+    gSetSync('⚠️ Erro ao sincronizar: '+e.message,'err');
+  }
 }
 
 // ── OVERRIDE saveToLib to also sync ──
