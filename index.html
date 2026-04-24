@@ -30,6 +30,33 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
 .btn.active{background:var(--pm);}
 #save-status{font-size:11px;color:#5a3a7a;font-style:italic;margin-left:4px;}
 .tb-sep{width:1px;background:rgba(107,53,160,.3);height:24px;margin:0 2px;}
+/* ── IO Dropdown ── */
+.io-wrap{position:relative;display:inline-block;}
+.io-menu{
+  position:absolute;top:calc(100% + 6px);left:0;
+  background:#fff;border:1px solid #ddd;border-radius:10px;
+  box-shadow:0 4px 20px rgba(80,30,120,.2);
+  min-width:200px;z-index:999;overflow:hidden;
+  display:none;flex-direction:column;
+}
+.io-menu.open{display:flex;}
+.io-menu-item{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 16px;font-size:13px;font-family:'Lato',sans-serif;
+  color:var(--td);cursor:pointer;border:none;background:none;
+  width:100%;text-align:left;white-space:nowrap;
+  transition:background .15s;
+}
+.io-menu-item:hover{background:var(--pl);}
+.io-menu-sep{height:1px;background:#eee;margin:2px 0;}
+.io-menu-item input[type=file]{display:none;}
+.io-menu-label{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 16px;font-size:13px;font-family:'Lato',sans-serif;
+  color:var(--td);cursor:pointer;width:100%;
+  transition:background .15s;
+}
+.io-menu-label:hover{background:var(--pl);}
 /* ── GOOGLE AUTH ── */
 .g-auth-wrap{margin-left:auto;display:flex;align-items:center;gap:8px;}
 .g-login-btn{background:#fff;color:#444;border:1px solid #ccc;border-radius:8px;padding:7px 12px;font-family:'Lato',sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;transition:box-shadow .2s;white-space:nowrap;}
@@ -218,10 +245,22 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
   <button class="btn sec" onclick="toggleLib()">📚 Fichas salvas</button>
   <button class="btn sec" onclick="novaFicha()">➕ Nova ficha</button>
   <div class="tb-sep"></div>
-  <label class="btn sec" style="cursor:pointer">⬆️ Importar Excel<input type="file" accept=".xlsx,.xls" onchange="importXLSX(event)" style="display:none"></label>
-  <button class="btn sec" onclick="exportXLSX()">⬇️ Exportar Excel</button>
-  <label class="btn sec" style="cursor:pointer;font-size:10px">JSON ⬆️<input type="file" accept=".json" onchange="importJSON(event)" style="display:none"></label>
-  <button class="btn sec" style="font-size:10px" onclick="exportJSON()">JSON ⬇️</button>
+  <div class="io-wrap" id="io-wrap">
+    <button class="btn sec" onclick="toggleIOMenu()">⇅ Importar / Exportar</button>
+    <div class="io-menu" id="io-menu">
+      <label class="io-menu-label">
+        ⬆️ Importar Excel
+        <input type="file" accept=".xlsx,.xls" onchange="importXLSX(event);closeIOMenu()">
+      </label>
+      <button class="io-menu-item" onclick="exportXLSX();closeIOMenu()">⬇️ Exportar Excel</button>
+      <div class="io-menu-sep"></div>
+      <label class="io-menu-label">
+        ⬆️ Importar JSON
+        <input type="file" accept=".json" onchange="importJSON(event);closeIOMenu()">
+      </label>
+      <button class="io-menu-item" onclick="exportJSON();closeIOMenu()">⬇️ Exportar JSON</button>
+    </div>
+  </div>
   <div class="tb-sep"></div>
   <button class="btn" onclick="printA4()">🖨️ A4</button>
   <span id="save-status"></span>
@@ -427,6 +466,7 @@ function shrinkObs(el){
 
 // ══ COVER: file ══
 let coverB64=null,coverURL='';
+let _editingKey=null; // tracks if editing existing book
 function loadCoverFile(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
@@ -656,8 +696,27 @@ function setLib(l){try{localStorage.setItem('lib',JSON.stringify(l));}catch{aler
 async function saveToLib(){
   const d=collect();
   const title=d.btitle||d.fields['f-titulo']||'Sem título';
-  d._k=Date.now();d._t=title;d._s=new Date().toLocaleDateString('pt-BR');
-  const lib=getLib();lib.push(d);setLib(lib);renderLib();
+  d._t=title;
+  const lib=getLib();
+  if(_editingKey){
+    // update existing book
+    d._k=_editingKey;
+    const idx=lib.findIndex(x=>x._k===_editingKey);
+    if(idx>=0){
+      d._s=lib[idx]._s; // keep original save date
+      lib[idx]=d;
+    } else {
+      d._s=new Date().toLocaleDateString('pt-BR');
+      lib.push(d);
+    }
+  } else {
+    // new book
+    d._k=Date.now();
+    d._s=new Date().toLocaleDateString('pt-BR');
+    lib.push(d);
+    _editingKey=d._k; // now we're editing this book
+  }
+  setLib(lib);renderLib();
   if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
   const st=document.getElementById('save-status');
   st.textContent='✓ "'+title+'" salva!';setTimeout(()=>st.textContent='',3000);
@@ -691,10 +750,12 @@ function hasUnsavedContent(){
 function loadLib(k){
   const item=getLib().find(x=>x._k===k);
   if(!item)return;
-  if(hasUnsavedContent()){
+  if(hasUnsavedContent()&&_editingKey!==k){
     if(!confirm('O formulário tem conteúdo não salvo. Carregar essa ficha vai substituir o que está sendo editado. Continuar?'))return;
   }
-  restore(item);toggleLib();switchView('form');
+  restore(item);
+  _editingKey=k; // track that we're editing this book
+  toggleLib();switchView('form');
 }
 function delLib(k){ moveToTrash(k); }
 
@@ -770,6 +831,7 @@ function toggleLib(){const p=document.getElementById('library-panel');p.style.di
 // ══ NOVA FICHA ══
 function novaFicha(){
   if(!confirm('Limpar o formulário?'))return;
+  _editingKey=null; // reset editing state
   coverB64=null;coverURL='';notaVal=null;
   clearCoverDisplay();document.getElementById('f-coverurl').value='';
   document.getElementById('f-btitle').innerText='';
@@ -1050,7 +1112,20 @@ let gConnected   = false;
 function gH(){ return {Authorization:'Bearer '+gToken,'Content-Type':'application/json'}; }
 function gSetSync(msg,cls){const el=document.getElementById('g-sync');if(!el)return;el.textContent=msg;el.className='g-sync'+(cls?' '+cls:'');}
 async function gApi(url,opts={}){
-  const r=await fetch(url,{headers:gH(),...opts});
+  let r;
+  try{
+    r=await fetch(url,{headers:gH(),...opts});
+  }catch(netErr){
+    // Firefox Enhanced Tracking Protection or network error
+    const isFF=/firefox/i.test(navigator.userAgent);
+    if(isFF){
+      throw new Error(
+        'NetworkError — Firefox pode estar bloqueando as chamadas Google. '+
+        'Clique no ícone 🛡️ na barra de endereço e desative a Proteção Contra Rastreamento para este site, depois tente novamente.'
+      );
+    }
+    throw netErr;
+  }
   if(!r.ok){const t=await r.text();throw new Error(r.status+': '+t.substring(0,120));}
   return r.json();
 }
@@ -1232,7 +1307,7 @@ async function gUploadCoverToDrive(base64,title){
     body:JSON.stringify({role:'reader',type:'anyone'})
   });
   if(!perm.ok)console.warn('Permission set failed:',await perm.text());
-  return `https://drive.google.com/uc?export=view&id=${f.id}`;
+  return `https://drive.google.com/thumbnail?id=${f.id}&sz=w400-h600`;
 }
 
 // ── SHEETS: spreadsheet setup ──
@@ -1257,10 +1332,10 @@ async function gFindOrCreateSpreadsheet(folderId){
   await fetch(`https://www.googleapis.com/drive/v3/files/${ssId}?addParents=${folderId}&removeParents=root&fields=id`,
     {method:'PATCH',headers:gH()});
   // write headers
-  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${G_SHEET_F}!A1:append?valueInputOption=RAW`,{
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${encodeURIComponent(G_SHEET_F+'!A1')}:append?valueInputOption=RAW`,{
     method:'POST',body:JSON.stringify({values:[G_HEADERS]})
   });
-  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${G_SHEET_T}!A1:append?valueInputOption=RAW`,{
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${encodeURIComponent(G_SHEET_T+'!A1')}:append?valueInputOption=RAW`,{
     method:'POST',body:JSON.stringify({values:[G_HEADERS]})
   });
   return ssId;
@@ -1332,12 +1407,12 @@ async function gLoadAll(){
   if(!gConnected||!gSsId)return;
   try{
     // load fichas
-    const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X`);
+    const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_F+'!A:X')}`);
     const rows=(r.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
     const lib=rows.map(gRowToBook);
     localStorage.setItem('lib',JSON.stringify(lib));
     // load trash
-    const rt=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_T}!A:X`);
+    const rt=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_T+'!A:X')}`);
     const trows=(rt.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
     const trash=trows.map(r=>{const b=gRowToBook(r);b._deletedAt=String(r[22]||'');return b;});
     localStorage.setItem('trash',JSON.stringify(trash));
@@ -1352,7 +1427,7 @@ async function gLoadAll(){
 
 // ── FIND row index by _key ──
 async function gFindRow(sheetName,key){
-  const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${sheetName}!A:A`);
+  const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(sheetName+'!A:A')}`);
   const vals=r.values||[];
   for(let i=1;i<vals.length;i++){
     if(String(vals[i][0])===String(key))return i+1; // 1-indexed sheet row
@@ -1385,11 +1460,11 @@ async function gSaveBook(d){
   const row=gBookToRow(d);
   const existingRow=await gFindRow(G_SHEET_F,d._k);
   if(existingRow){
-    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A${existingRow}:X${existingRow}?valueInputOption=RAW`,{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_F+'!A'+existingRow+':X'+existingRow)}?valueInputOption=RAW`,{
       method:'PUT',body:JSON.stringify({values:[row]})
     });
   }else{
-    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X:append?valueInputOption=RAW`,{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_F+'!A:X')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{
       method:'POST',body:JSON.stringify({values:[row]})
     });
   }
@@ -1419,7 +1494,7 @@ async function gMoveToTrashSheet(d){
   // append to Lixeira sheet
   const row=gBookToRow(d);
   row[22]=d._deletedAt||new Date().toLocaleDateString('pt-BR');
-  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_T}!A:A:append?valueInputOption=RAW`,{
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_T+'!A:X')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{
     method:'POST',body:JSON.stringify({values:[row]})
   });
 }
@@ -1453,7 +1528,7 @@ async function gSyncImportedBooks(newBooks){
     // batch in groups of 10 to avoid request size limits
     for(let i=0;i<rows.length;i+=10){
       const batch=rows.slice(i,i+10);
-      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${G_SHEET_F}!A:X:append?valueInputOption=RAW`,{
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_F+'!A:X')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{
         method:'POST',body:JSON.stringify({values:batch})
       });
       gSetSync(`⏳ Sincronizando... ${Math.min(i+10,rows.length)}/${rows.length}`,'busy');
@@ -1518,6 +1593,21 @@ window.addEventListener('load',()=>{
   };
   tryInit();
 });
+
+// ══ IO MENU ══
+function toggleIOMenu(){
+  const m=document.getElementById('io-menu');
+  m.classList.toggle('open');
+  if(m.classList.contains('open')){
+    // close on outside click
+    setTimeout(()=>document.addEventListener('click',_ioOutside,{once:true}),0);
+  }
+}
+function closeIOMenu(){document.getElementById('io-menu').classList.remove('open');}
+function _ioOutside(e){
+  const wrap=document.getElementById('io-wrap');
+  if(!wrap.contains(e.target))closeIOMenu();
+}
 
 // ══ INIT ══
 window.addEventListener('load',()=>{
