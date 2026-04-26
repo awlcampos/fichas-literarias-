@@ -331,6 +331,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 
 /* PRINT */
 @media print{
+  #acervo-section{display:none!important;}
   @page{size:A4 portrait;margin:0;}
   html,body{margin:0!important;padding:0!important;background:white!important;}
   body>*{display:none!important;}
@@ -522,26 +523,60 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
         <div class="rlbl" style="margin-top:4px">Obs:</div>
         <textarea class="ata ata-shrink" id="f-obs" rows="1" placeholder="Observações..." oninput="shrinkObs(this);as()"></textarea>
       </div>
-      <div class="want-section">
+      <div class="want-section" id="acervo-section">
         <div class="sec-hdr" style="background:#3a7abf">📦 Acervo</div>
-        <div class="want-field-row"><span class="flabel">Tenho físico:</span>
+
+        <!-- Tenho físico? -->
+        <div class="want-field-row">
+          <span class="flabel">Tenho físico:</span>
           <span class="fmt-chk" id="acv-tem" onclick="togFmt(this);onAcervoChange()"><span class="fmt-bbl"></span> Sim</span>
+          <span class="fmt-chk" id="acv-nao-tem" onclick="togFmtExcl('acv-tem','acv-nao-tem');onAcervoChange()"><span class="fmt-bbl"></span> Não</span>
         </div>
-        <div id="acv-quer-wrap">
-          <div class="want-field-row"><span class="flabel">Quero comprar:</span>
-            <span class="fmt-chk" id="acv-quer" onclick="togFmt(this);onAcervoChange()"><span class="fmt-bbl"></span> Sim</span>
+
+        <!-- Quero comprar? (só aparece se Não tem) -->
+        <div id="acv-quer-wrap" style="display:none">
+          <div class="want-field-row">
+            <span class="flabel">Quero comprar:</span>
+            <span class="fmt-chk" id="acv-quer" onclick="togFmtExcl('acv-quer','acv-nao-quer');onAcervoChange()"><span class="fmt-bbl"></span> Sim</span>
+            <span class="fmt-chk" id="acv-nao-quer" onclick="togFmtExcl('acv-nao-quer','acv-quer');onAcervoChange()"><span class="fmt-bbl"></span> Não</span>
           </div>
-          <div class="want-field-row" id="acv-faixa-wrap" style="display:none"><span class="flabel">Faixa de preço:</span>
-            <select class="want-sel" id="acv-faixa" onchange="as()">
-              <option value="">— selecione —</option>
-              <option value="ate5">Até R$ 5</option>
-              <option value="5a10">R$ 5 a R$ 10</option>
-              <option value="10a20">R$ 10 a R$ 20</option>
-              <option value="20a30">R$ 20 a R$ 30</option>
-              <option value="30a50">R$ 30 a R$ 50</option>
-              <option value="50a70">R$ 50 a R$ 70</option>
-              <option value="mais70">Mais de R$ 70</option>
-            </select>
+
+          <!-- Novo ou sebo? (só aparece se Quero comprar = Sim) -->
+          <div id="acv-tipo-wrap" style="display:none">
+            <div class="want-field-row">
+              <span class="flabel">Novo ou sebo:</span>
+              <span class="fmt-chk" id="acv-novo" onclick="togFmtExcl('acv-novo','acv-sebo');onAcervoChange()"><span class="fmt-bbl"></span> Novo</span>
+              <span class="fmt-chk" id="acv-sebo" onclick="togFmtExcl('acv-sebo','acv-novo');onAcervoChange()"><span class="fmt-bbl"></span> Sebo</span>
+            </div>
+
+            <!-- Faixas NOVO -->
+            <div id="acv-faixa-novo-wrap" style="display:none">
+              <div class="want-field-row"><span class="flabel">Toparia pagar:</span>
+                <select class="want-sel" id="acv-faixa-novo" onchange="as()">
+                  <option value="">— selecione —</option>
+                  <option value="novo-ate40">Até R$ 40</option>
+                  <option value="novo-ate60">Até R$ 60</option>
+                  <option value="novo-ate80">Até R$ 80</option>
+                  <option value="novo-mais80">Mais de R$ 80</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Faixas SEBO -->
+            <div id="acv-faixa-sebo-wrap" style="display:none">
+              <div class="want-field-row"><span class="flabel">Toparia pagar:</span>
+                <select class="want-sel" id="acv-faixa-sebo" onchange="as()">
+                  <option value="">— selecione —</option>
+                  <option value="sebo-ate5">Até R$ 5</option>
+                  <option value="sebo-5a10">R$ 5 a R$ 10</option>
+                  <option value="sebo-10a20">R$ 10 a R$ 20</option>
+                  <option value="sebo-20a30">R$ 20 a R$ 30</option>
+                  <option value="sebo-30a50">R$ 30 a R$ 50</option>
+                  <option value="sebo-50a70">R$ 50 a R$ 70</option>
+                  <option value="sebo-mais70">Mais de R$ 70</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -613,11 +648,30 @@ function onLidoChange(){
     document.getElementById(id).style.opacity=lido?'1':'.5';
   });
 }
+// exclusive fmt toggle for acervo pairs
+function togFmtExcl(onId, offId){
+  const onEl=document.getElementById(onId);
+  const offEl=document.getElementById(offId);
+  onEl.classList.add('on');
+  offEl.classList.remove('on');
+  as();
+}
+
 function onAcervoChange(){
-  const tem=document.getElementById('acv-tem').classList.contains('on');
-  const quer=document.getElementById('acv-quer').classList.contains('on');
-  document.getElementById('acv-quer-wrap').style.display=tem?'none':'block';
-  document.getElementById('acv-faixa-wrap').style.display=(!tem&&quer)?'block':'none';as();
+  const tem   = document.getElementById('acv-tem').classList.contains('on');
+  const naoTem= document.getElementById('acv-nao-tem').classList.contains('on');
+  const quer  = document.getElementById('acv-quer').classList.contains('on');
+  const novo  = document.getElementById('acv-novo').classList.contains('on');
+  const sebo  = document.getElementById('acv-sebo').classList.contains('on');
+
+  // Quero comprar? só aparece se marcou Não tem
+  document.getElementById('acv-quer-wrap').style.display = naoTem ? 'block' : 'none';
+  // Novo/sebo só aparece se quer comprar = sim
+  document.getElementById('acv-tipo-wrap').style.display = (naoTem && quer) ? 'block' : 'none';
+  // Faixas
+  document.getElementById('acv-faixa-novo-wrap').style.display = (naoTem && quer && novo) ? 'block' : 'none';
+  document.getElementById('acv-faixa-sebo-wrap').style.display = (naoTem && quer && sebo) ? 'block' : 'none';
+  as();
 }
 // COVER
 let coverB64=null,coverURL='',_editingKey=null;
@@ -726,8 +780,13 @@ function collect(){
     keys:cl('#key-list .kta'),pc:cl('#p-central .pta'),ps:cl('#p-sec .pta'),po:cl('#p-outros .pta'),
     lido:document.getElementById('toggle-lido').checked,
     acvTem:document.getElementById('acv-tem').classList.contains('on'),
+    acvNaoTem:document.getElementById('acv-nao-tem').classList.contains('on'),
     acvQuer:document.getElementById('acv-quer').classList.contains('on'),
-    acvFaixa:document.getElementById('acv-faixa').value};
+    acvNaoQuer:document.getElementById('acv-nao-quer').classList.contains('on'),
+    acvNovo:document.getElementById('acv-novo').classList.contains('on'),
+    acvSebo:document.getElementById('acv-sebo').classList.contains('on'),
+    acvFaixaNovo:document.getElementById('acv-faixa-novo').value,
+    acvFaixaSebo:document.getElementById('acv-faixa-sebo').value};
 }
 function gv(gid){const s=document.querySelector('#'+gid+' .oitem.on');return s?s.dataset.v:null;}
 function cl(sel){return Array.from(document.querySelectorAll(sel)).map(x=>x.value);}
@@ -748,8 +807,14 @@ function restore(d){
   rl('p-sec','pta',d.ps||[],'div',3);rl('p-outros','pta',d.po||[],'div',2);
   document.getElementById('toggle-lido').checked=d.lido!==false;onLidoChange();
   document.getElementById('acv-tem').classList.toggle('on',!!d.acvTem);
+  document.getElementById('acv-nao-tem').classList.toggle('on',!!d.acvNaoTem);
   document.getElementById('acv-quer').classList.toggle('on',!!d.acvQuer);
-  document.getElementById('acv-faixa').value=d.acvFaixa||'';onAcervoChange();
+  document.getElementById('acv-nao-quer').classList.toggle('on',!!d.acvNaoQuer);
+  document.getElementById('acv-novo').classList.toggle('on',!!d.acvNovo);
+  document.getElementById('acv-sebo').classList.toggle('on',!!d.acvSebo);
+  document.getElementById('acv-faixa-novo').value=d.acvFaixaNovo||'';
+  document.getElementById('acv-faixa-sebo').value=d.acvFaixaSebo||'';
+  onAcervoChange();
   setTimeout(()=>{aeAll();shrinkTitle();const o=document.getElementById('f-obs');if(o)shrinkObs(o);},80);
 }
 function sv(gid,val){document.querySelectorAll('#'+gid+' .oitem').forEach(x=>x.classList.toggle('on',x.dataset.v===val));}
@@ -763,15 +828,31 @@ function as(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage
 function getLib(){try{return JSON.parse(localStorage.getItem('lib')||'[]');}catch{return[];}}
 function setLib(l){try{localStorage.setItem('lib',JSON.stringify(l));}catch{alert('Armazenamento cheio.');}}
 async function saveToLib(){
-  const d=collect();const title=d.btitle||d.fields['f-titulo']||'Sem título';d._t=title;
+  // snapshot title before any blur event can clear contenteditable
+  const btEl=document.getElementById('f-btitle');
+  const btitleSnap=(btEl.innerText||btEl.textContent||'').trim();
+  const d=collect();
+  if(btitleSnap)d.btitle=btitleSnap; // use snapshot if collect() got empty
+  const title=d.btitle||d.fields['f-titulo']||'Sem título';d._t=title;
   const lib=getLib();
-  if(_editingKey){d._k=_editingKey;const idx=lib.findIndex(x=>x._k===_editingKey);
-    if(idx>=0){d._s=lib[idx]._s;lib[idx]=d;}else{d._s=new Date().toLocaleDateString('pt-BR');lib.push(d);}}
-  else{d._k=Date.now();d._s=new Date().toLocaleDateString('pt-BR');lib.push(d);_editingKey=d._k;}
+  if(_editingKey){
+    d._k=_editingKey;
+    const idx=lib.findIndex(x=>String(x._k)===String(_editingKey));
+    if(idx>=0){d._s=lib[idx]._s;lib[idx]=d;}
+    else{d._s=new Date().toLocaleDateString('pt-BR');lib.push(d);}
+  }else{
+    d._k=Date.now();d._s=new Date().toLocaleDateString('pt-BR');
+    lib.push(d);_editingKey=d._k;
+  }
   setLib(lib);renderLib();
   const st=document.getElementById('save-status');
   st.textContent='✓ "'+title+'" salva!';setTimeout(()=>st.textContent='',3000);
-  setTimeout(()=>{_editingKey=null;clearForm();},600);
+  // go to estante and clear form
+  setTimeout(()=>{
+    _editingKey=null;
+    clearForm();
+    switchView('estante');
+  },700);
   if(typeof gConnected!=='undefined'&&gConnected){
     gSetSync('⏳ Salvando...','busy');
     try{await gSaveBook(d);gSetSync('✓ Salvo no Google','ok');setTimeout(()=>gSetSync('✓ Sincronizado','ok'),3000);}
@@ -779,14 +860,15 @@ async function saveToLib(){
   }
 }
 function clearForm(){
+  // do NOT reset _editingKey here — only novaFicha() should do that
   coverB64=null;coverURL='';notaVal=null;
   clearCoverDisplay();document.getElementById('f-coverurl').value='';
   document.getElementById('f-btitle').innerText='';
   document.querySelectorAll('#view-form textarea').forEach(el=>el.value='');
-  ['fmt-fisico','fmt-audio','acv-tem','acv-quer'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  ['fmt-fisico','fmt-audio','acv-tem','acv-nao-tem','acv-quer','acv-nao-quer','acv-novo','acv-sebo'].forEach(id=>document.getElementById(id).classList.remove('on'));
   document.querySelectorAll('.nbbl,.oitem').forEach(x=>x.classList.remove('on'));
   document.getElementById('nota-row').classList.remove('has-sel');
-  document.getElementById('toggle-lido').checked=true;document.getElementById('acv-faixa').value='';
+  document.getElementById('toggle-lido').checked=true;document.getElementById('acv-faixa-novo').value='';document.getElementById('acv-faixa-sebo').value='';
   onLidoChange();onAcervoChange();
   rl('key-list','kta',[],'li',3);rl('p-central','pta',[],'div',3);rl('p-sec','pta',[],'div',3);rl('p-outros','pta',[],'div',2);
   setTimeout(()=>{aeAll();shrinkTitle();},80);
@@ -873,11 +955,12 @@ function renderWant(){
   const wants=lib.filter(b=>!b.acvTem&&b.acvQuer&&(!q||(b.btitle||'').toLowerCase().includes(q)||(b.fields?.['f-autor']||'').toLowerCase().includes(q)));
   const grid=document.getElementById('want-grid'),empty=document.getElementById('want-empty');
   grid.innerHTML='';if(!wants.length){empty.style.display='block';return;}empty.style.display='none';
-  const fl={ate5:'até R$ 5','5a10':'R$5–10','10a20':'R$10–20','20a30':'R$20–30','30a50':'R$30–50','50a70':'R$50–70',mais70:'+R$70'};
+  const flNovo={'novo-ate40':'Novo até R$40','novo-ate60':'Novo até R$60','novo-ate80':'Novo até R$80','novo-mais80':'Novo +R$80'};
+  const flSebo={'sebo-ate5':'Sebo até R$5','sebo-5a10':'Sebo R$5–10','sebo-10a20':'Sebo R$10–20','sebo-20a30':'Sebo R$20–30','sebo-30a50':'Sebo R$30–50','sebo-50a70':'Sebo R$50–70','sebo-mais70':'Sebo +R$70'};
   wants.forEach(book=>{
     const card=document.createElement('div');card.className='want-card';
     const src=book.cover||book.coverURL||'';const cvr=src?'<img src="'+src+'" alt="" onerror="this.style.display=\'none\'">':'📖';
-    const faixa=book.acvFaixa?fl[book.acvFaixa]||'':'';
+    const faixa=book.acvNovo?(flNovo[book.acvFaixaNovo]||'Novo'):(book.acvSebo?(flSebo[book.acvFaixaSebo]||'Sebo'):'');
     card.innerHTML='<div class="want-cover">'+cvr+'</div><div class="want-info"><div class="want-title">'+(book.btitle||book._t||'')+'</div><div class="want-author">'+(book.fields?.['f-autor']||'')+'</div>'+(faixa?'<span class="want-price">💰 '+faixa+'</span>':'')+'</div><div class="want-actions"><button class="want-toggle comprado" onclick="markComprado('+book._k+');event.stopPropagation()">✓ Comprei!</button><button class="want-toggle" onclick="loadLib('+book._k+');event.stopPropagation()">✏️ Editar</button></div>';
     card.onclick=()=>loadLib(book._k);grid.appendChild(card);});
 }
