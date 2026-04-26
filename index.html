@@ -984,6 +984,9 @@ function saveWishItem(){
     wishes.push({_k:Date.now(),titulo,autor,price,_added:new Date().toLocaleDateString('pt-BR')});
   }
   setWishList(wishes);closeWishAdd();renderWant();
+  // sync to Sheets
+  const saved=editKey?wishes.find(x=>x._k===editKey):wishes[wishes.length-1];
+  if(saved&&typeof gConnected!=='undefined'&&gConnected)gSaveWish(saved).catch(e=>console.error(e));
 }
 
 function editWish(k){
@@ -1000,6 +1003,7 @@ function editWish(k){
 function deleteWish(k){
   if(!confirm('Remover da wish list?'))return;
   setWishList(getWishList().filter(x=>x._k!==k));renderWant();
+  if(typeof gConnected!=='undefined'&&gConnected)gDeleteWishSheet(k).catch(e=>console.error(e));
 }
 
 function wishComprado(k){
@@ -1024,6 +1028,7 @@ function wishComprado(k){
     st.textContent='📚 Já está na estante!';setTimeout(()=>st.textContent='',2500);
   }
   setWishList(wishes.filter(x=>x._k!==k));renderWant();
+  if(typeof gConnected!=='undefined'&&gConnected)gDeleteWishSheet(k).catch(e=>console.error(e));
 }
 
 // ══ ESTANTE ADD ══
@@ -1310,6 +1315,8 @@ const G_SCOPES    = 'https://www.googleapis.com/auth/spreadsheets https://www.go
 const G_SS_NAME   = 'fichas-literarias';
 const G_SHEET_F   = 'Fichas';
 const G_SHEET_T   = 'Lixeira';
+const G_SHEET_W   = 'WishList';
+const G_WISH_HEADERS = ['_key','Título','Autor','Faixa de Preço','Data de adição'];
 const G_FOLDER_PATH = ['Projetos','Fichas Literárias'];
 
 // headers for sheets (col A = _key, then all data)
@@ -1537,7 +1544,8 @@ async function gFindOrCreateSpreadsheet(folderId){
       properties:{title:G_SS_NAME},
       sheets:[
         {properties:{title:G_SHEET_F}},
-        {properties:{title:G_SHEET_T}}
+        {properties:{title:G_SHEET_T}},
+        {properties:{title:G_SHEET_W}}
       ]
     })
   });
@@ -1552,6 +1560,9 @@ async function gFindOrCreateSpreadsheet(folderId){
   await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${encodeURIComponent(G_SHEET_T+'!A1')}:append?valueInputOption=RAW`,{
     method:'POST',body:JSON.stringify({values:[G_HEADERS]})
   });
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${encodeURIComponent(G_SHEET_W+'!A1')}:append?valueInputOption=RAW`,{
+    method:'POST',body:JSON.stringify({values:[G_WISH_HEADERS]})
+  });
   return ssId;
 }
 
@@ -1563,6 +1574,22 @@ async function gSetupStorage(){
     localStorage.setItem('g_ssid',gSsId);
   }
   gConnected=true;
+  // ensure WishList sheet exists (migration for existing spreadsheets)
+  try{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A1')}`);
+  }catch(e){
+    // sheet doesn't exist, create it
+    const meta=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}?fields=sheets.properties`);
+    const exists=meta.sheets.some(s=>s.properties.title===G_SHEET_W);
+    if(!exists){
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}:batchUpdate`,{
+        method:'POST',body:JSON.stringify({requests:[{addSheet:{properties:{title:G_SHEET_W}}}]})
+      });
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A1')}:append?valueInputOption=RAW`,{
+        method:'POST',body:JSON.stringify({values:[G_WISH_HEADERS]})
+      });
+    }
+  }
   gSetSync('⏳ Carregando fichas...','busy');
   await gLoadAll();
   gSetSync('✓ Sincronizado com Google','ok');
@@ -1630,9 +1657,21 @@ async function gLoadAll(){
     const trows=(rt.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
     const trash=trows.map(r=>{const b=gRowToBook(r);b._deletedAt=String(r[22]||'');return b;});
     localStorage.setItem('trash',JSON.stringify(trash));
-    renderLib();
-    updateTrashBadge();
-    if(document.getElementById('view-estante')&&document.getElementById('view-estante').style.display!=='none')renderEstante();
+    // load wish list
+    try{
+      const rw=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A:E')}`);
+      const wrows=(rw.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
+      const wishes=wrows.map(row=>({
+        _k:parseInt(row[0])||Date.now(),titulo:String(row[1]||''),
+        autor:String(row[2]||''),price:String(row[3]||''),_added:String(row[4]||'')
+      }));
+      localStorage.setItem('wishlist',JSON.stringify(wishes));
+    }catch(we){console.warn('WishList load skipped:',we.message);}
+    renderLib();updateTrashBadge();
+    const activeView=document.querySelector('.view.active')?.id?.replace('view-','');
+    if(activeView==='estante')renderEstante();
+    else if(activeView==='want')renderWant();
+    else if(activeView==='dashboard')renderDashboard();
   }catch(e){
     console.error('gLoadAll error:',e);
     gSetSync('⚠️ Erro ao carregar: '+e.message,'err');
@@ -1720,6 +1759,25 @@ async function gRestoreFromTrashSheet(d){
 }
 
 // ── Batch sync after import ──
+
+// ── WishList Google Sheets sync ──
+async function gSaveWish(w){
+  if(!gConnected||!gSsId)return;
+  const row=[String(w._k),w.titulo||'',w.autor||'',w.price||'',w._added||''];
+  const existingRow=await gFindRow(G_SHEET_W,w._k);
+  if(existingRow){
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A'+existingRow+':E'+existingRow)}?valueInputOption=RAW`,
+      {method:'PUT',body:JSON.stringify({values:[row]})});
+  }else{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {method:'POST',body:JSON.stringify({values:[row]})});
+  }
+}
+async function gDeleteWishSheet(k){
+  if(!gConnected||!gSsId)return;
+  await gDeleteRow(G_SHEET_W,k);
+}
+
 async function gSyncImportedBooks(newBooks){
   if(!gConnected||!gSsId||!newBooks.length)return;
   gSetSync(`⏳ Sincronizando ${newBooks.length} fichas...`,'busy');
@@ -1769,6 +1827,25 @@ async function gRestoreFromTrashSheet(d){
   if(!gConnected||!gSsId)return;
   await gDeleteRow(G_SHEET_T,d._k);await gSaveBook(d);
 }
+
+// ── WishList Google Sheets sync ──
+async function gSaveWish(w){
+  if(!gConnected||!gSsId)return;
+  const row=[String(w._k),w.titulo||'',w.autor||'',w.price||'',w._added||''];
+  const existingRow=await gFindRow(G_SHEET_W,w._k);
+  if(existingRow){
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A'+existingRow+':E'+existingRow)}?valueInputOption=RAW`,
+      {method:'PUT',body:JSON.stringify({values:[row]})});
+  }else{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSsId}/values/${encodeURIComponent(G_SHEET_W+'!A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {method:'POST',body:JSON.stringify({values:[row]})});
+  }
+}
+async function gDeleteWishSheet(k){
+  if(!gConnected||!gSsId)return;
+  await gDeleteRow(G_SHEET_W,k);
+}
+
 async function gSyncImportedBooks(newBooks){
   if(!gConnected||!gSsId||!newBooks.length)return;
   gSetSync('⏳ Sincronizando '+newBooks.length+'...','busy');
