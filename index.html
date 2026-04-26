@@ -235,16 +235,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 .date-stamp{font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--tm);
   border:none;background:transparent;text-align:right;width:175px;outline:none;resize:none;overflow:hidden;line-height:1.4;}
 .date-stamp:focus{background:rgba(255,255,255,.4);border-radius:6px;}
-.lido-toggle-wrap{display:flex;align-items:center;justify-content:center;gap:9px;
-  background:rgba(107,53,160,.07);border-radius:11px;padding:9px;margin-bottom:11px;}
-.lido-toggle-lbl{font-size:13px;font-weight:700;color:var(--td);}
-.toggle-switch{position:relative;width:50px;height:27px;}
-.toggle-switch input{opacity:0;width:0;height:0;position:absolute;}
-.toggle-knob{position:absolute;inset:0;background:#c8aae8;border-radius:27px;cursor:pointer;transition:background .25s;}
 .toggle-knob::before{content:'';position:absolute;width:21px;height:21px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .25s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
-.toggle-switch input:checked + .toggle-knob{background:var(--pd);}
-.toggle-switch input:checked + .toggle-knob::before{transform:translateX(23px);}
-.lido-status{font-size:12px;color:var(--pd);font-weight:700;min-width:58px;}
 .columns{display:grid;grid-template-columns:340px 1fr;gap:16px;}
 .left-col,.right-col{display:flex;flex-direction:column;gap:10px;}
 .cover-wrap{background:#1a0a2e;border-radius:10px;overflow:hidden;aspect-ratio:2/3;
@@ -322,16 +313,9 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 .add-btn{background:none;border:1px dashed var(--pm);border-radius:5px;color:var(--pm);font-size:10px;
   padding:2px 8px;cursor:pointer;margin-top:2px;transition:background .15s;font-family:'Lato',sans-serif;}
 .add-btn:hover{background:rgba(139,91,196,.1);}
-.want-section{background:rgba(200,230,255,.28);border-radius:12px;padding:10px 12px;border:1px solid rgba(107,53,160,.14);}
-.want-field-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;}
-.want-field-row:last-child{margin-bottom:0;}
-.want-sel{flex:1;border:none;background:rgba(255,255,255,.5);border-radius:7px;padding:4px 7px;
-  font-family:'Lato',sans-serif;font-size:11px;color:var(--td);outline:none;}
-.want-sel:focus{background:rgba(255,255,255,.8);}
 
 /* PRINT */
 @media print{
-  #acervo-section{display:none!important;}
   @page{size:A4 portrait;margin:0;}
   html,body{margin:0!important;padding:0!important;background:white!important;}
   body>*{display:none!important;}
@@ -366,7 +350,8 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
   <button class="nav-btn" id="btn-dashboard" onclick="switchView('dashboard')">📊 Dashboard</button>
   <button class="nav-btn" id="btn-estante" onclick="switchView('estante')">📚 Estante</button>
   <button class="nav-btn" id="btn-form" onclick="switchView('form')">📋 Ficha</button>
-  <button class="nav-btn" id="btn-want" onclick="switchView('want')">🛒 Want List</button>
+  <button class="nav-btn" id="btn-want" onclick="switchView('want')">🛒 Wish List</button>
+  <button class="nav-btn" id="btn-catalogo" onclick="switchView('catalogo')">📖 Catálogo</button>
   <div class="nav-spacer"></div>
   <span id="g-sync" class="g-sync"></span>
   <button class="g-login-btn" id="g-login-btn" onclick="gLogin()">
@@ -462,16 +447,33 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
   <div class="want-grid" id="want-grid"></div>
 </div>
 
+
+<!-- CATÁLOGO -->
+<div class="view" id="view-catalogo">
+  <div class="estante-header">
+    <h2>📖 Catálogo</h2>
+    <p id="cat-user-label" style="color:rgba(255,255,255,.72);font-size:13px"></p>
+  </div>
+  <div class="cat-filters" id="catalogo-filters"></div>
+  <div class="cat-empty" id="catalogo-empty" style="display:none">Nenhuma ficha ainda.<br><small>Preencha fichas de leitura para vê-las aqui.</small></div>
+  <div class="book-grid" id="catalogo-grid"></div>
+</div>
+
+
+<!-- CATÁLOGO -->
+<div class="view" id="view-catalogo">
+  <div class="estante-header">
+    <h2>📖 Catálogo</h2>
+    <p id="cat-user-label" style="color:rgba(255,255,255,.72);font-size:13px"></p>
+  </div>
+  <div class="cat-empty" id="catalogo-empty" style="display:none">Nenhuma ficha ainda.<br><small>Preencha fichas de leitura para vê-las aqui.</small></div>
+  <div class="book-grid" id="catalogo-grid"></div>
+</div>
 <!-- FICHA -->
 <div class="view" id="view-form">
   <div id="g-warn" style="display:none">⚠️ <strong>Para sincronizar com Google</strong> abra via servidor. No terminal: <code>python -m http.server 8080</code></div>
   <div class="card-header"><textarea class="date-stamp" id="f-date" rows="1" placeholder="Mês Ano" oninput="ae(this);as()"></textarea></div>
-  <div class="lido-toggle-wrap">
-    <span class="lido-toggle-lbl">Não lido</span>
-    <label class="toggle-switch"><input type="checkbox" id="toggle-lido" onchange="onLidoChange();as()" checked><span class="toggle-knob"></span></label>
-    <span class="lido-toggle-lbl">Lido</span>
-    <span class="lido-status" id="lido-status">✓ Lido</span>
-  </div>
+
   <div class="columns">
     <div class="left-col">
       <div class="cover-wrap" id="cover-wrap">
@@ -523,63 +525,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
         <div class="rlbl" style="margin-top:4px">Obs:</div>
         <textarea class="ata ata-shrink" id="f-obs" rows="1" placeholder="Observações..." oninput="shrinkObs(this);as()"></textarea>
       </div>
-      <div class="want-section" id="acervo-section">
-        <div class="sec-hdr" style="background:#3a7abf">📦 Acervo</div>
 
-        <!-- Tenho físico? -->
-        <div class="want-field-row">
-          <span class="flabel">Tenho físico:</span>
-          <span class="fmt-chk" id="acv-tem" onclick="togFmt(this);onAcervoChange()"><span class="fmt-bbl"></span> Sim</span>
-          <span class="fmt-chk" id="acv-nao-tem" onclick="togFmtExcl('acv-tem','acv-nao-tem');onAcervoChange()"><span class="fmt-bbl"></span> Não</span>
-        </div>
-
-        <!-- Quero comprar? (só aparece se Não tem) -->
-        <div id="acv-quer-wrap" style="display:none">
-          <div class="want-field-row">
-            <span class="flabel">Quero comprar:</span>
-            <span class="fmt-chk" id="acv-quer" onclick="togFmtExcl('acv-quer','acv-nao-quer');onAcervoChange()"><span class="fmt-bbl"></span> Sim</span>
-            <span class="fmt-chk" id="acv-nao-quer" onclick="togFmtExcl('acv-nao-quer','acv-quer');onAcervoChange()"><span class="fmt-bbl"></span> Não</span>
-          </div>
-
-          <!-- Novo ou sebo? (só aparece se Quero comprar = Sim) -->
-          <div id="acv-tipo-wrap" style="display:none">
-            <div class="want-field-row">
-              <span class="flabel">Novo ou sebo:</span>
-              <span class="fmt-chk" id="acv-novo" onclick="togFmtExcl('acv-novo','acv-sebo');onAcervoChange()"><span class="fmt-bbl"></span> Novo</span>
-              <span class="fmt-chk" id="acv-sebo" onclick="togFmtExcl('acv-sebo','acv-novo');onAcervoChange()"><span class="fmt-bbl"></span> Sebo</span>
-            </div>
-
-            <!-- Faixas NOVO -->
-            <div id="acv-faixa-novo-wrap" style="display:none">
-              <div class="want-field-row"><span class="flabel">Toparia pagar:</span>
-                <select class="want-sel" id="acv-faixa-novo" onchange="as()">
-                  <option value="">— selecione —</option>
-                  <option value="novo-ate40">Até R$ 40</option>
-                  <option value="novo-ate60">Até R$ 60</option>
-                  <option value="novo-ate80">Até R$ 80</option>
-                  <option value="novo-mais80">Mais de R$ 80</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Faixas SEBO -->
-            <div id="acv-faixa-sebo-wrap" style="display:none">
-              <div class="want-field-row"><span class="flabel">Toparia pagar:</span>
-                <select class="want-sel" id="acv-faixa-sebo" onchange="as()">
-                  <option value="">— selecione —</option>
-                  <option value="sebo-ate5">Até R$ 5</option>
-                  <option value="sebo-5a10">R$ 5 a R$ 10</option>
-                  <option value="sebo-10a20">R$ 10 a R$ 20</option>
-                  <option value="sebo-20a30">R$ 20 a R$ 30</option>
-                  <option value="sebo-30a50">R$ 30 a R$ 50</option>
-                  <option value="sebo-50a70">R$ 50 a R$ 70</option>
-                  <option value="sebo-mais70">Mais de R$ 70</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       <div class="section" id="sec-resumo">
         <div class="sec-hdr">Resumo Objetivo</div>
         <textarea class="bta" id="f-resumo" rows="4" placeholder="Resumo objetivo do livro..." oninput="ae(this);as()"></textarea>
@@ -641,38 +587,8 @@ function shrinkObs(el){
   const lh=parseFloat(getComputedStyle(el).lineHeight),tgt=lh+4;
   while(el.scrollHeight>tgt&&fs>MN){fs-=.5;el.style.fontSize=fs+'px';}
 }
-function onLidoChange(){
-  const lido=document.getElementById('toggle-lido').checked;
-  document.getElementById('lido-status').textContent=lido?'✓ Lido':'○ Não lido';
-  ['sec-class','sec-chave','sec-pers','sec-reg','sec-resumo'].forEach(id=>{
-    document.getElementById(id).style.opacity=lido?'1':'.5';
-  });
-}
-// exclusive fmt toggle for acervo pairs
-function togFmtExcl(onId, offId){
-  const onEl=document.getElementById(onId);
-  const offEl=document.getElementById(offId);
-  onEl.classList.add('on');
-  offEl.classList.remove('on');
-  as();
-}
 
-function onAcervoChange(){
-  const tem   = document.getElementById('acv-tem').classList.contains('on');
-  const naoTem= document.getElementById('acv-nao-tem').classList.contains('on');
-  const quer  = document.getElementById('acv-quer').classList.contains('on');
-  const novo  = document.getElementById('acv-novo').classList.contains('on');
-  const sebo  = document.getElementById('acv-sebo').classList.contains('on');
 
-  // Quero comprar? só aparece se marcou Não tem
-  document.getElementById('acv-quer-wrap').style.display = naoTem ? 'block' : 'none';
-  // Novo/sebo só aparece se quer comprar = sim
-  document.getElementById('acv-tipo-wrap').style.display = (naoTem && quer) ? 'block' : 'none';
-  // Faixas
-  document.getElementById('acv-faixa-novo-wrap').style.display = (naoTem && quer && novo) ? 'block' : 'none';
-  document.getElementById('acv-faixa-sebo-wrap').style.display = (naoTem && quer && sebo) ? 'block' : 'none';
-  as();
-}
 // COVER
 let coverB64=null,coverURL='',_editingKey=null;
 function loadCoverFile(e){
@@ -778,15 +694,7 @@ function collect(){
     fmt:{fisico:document.getElementById('fmt-fisico').classList.contains('on'),audio:document.getElementById('fmt-audio').classList.contains('on')},
     nota:notaVal,ling:gv('g-ling'),dens:gv('g-dens'),
     keys:cl('#key-list .kta'),pc:cl('#p-central .pta'),ps:cl('#p-sec .pta'),po:cl('#p-outros .pta'),
-    lido:document.getElementById('toggle-lido').checked,
-    acvTem:document.getElementById('acv-tem').classList.contains('on'),
-    acvNaoTem:document.getElementById('acv-nao-tem').classList.contains('on'),
-    acvQuer:document.getElementById('acv-quer').classList.contains('on'),
-    acvNaoQuer:document.getElementById('acv-nao-quer').classList.contains('on'),
-    acvNovo:document.getElementById('acv-novo').classList.contains('on'),
-    acvSebo:document.getElementById('acv-sebo').classList.contains('on'),
-    acvFaixaNovo:document.getElementById('acv-faixa-novo').value,
-    acvFaixaSebo:document.getElementById('acv-faixa-sebo').value};
+  };
 }
 function gv(gid){const s=document.querySelector('#'+gid+' .oitem.on');return s?s.dataset.v:null;}
 function cl(sel){return Array.from(document.querySelectorAll(sel)).map(x=>x.value);}
@@ -805,16 +713,7 @@ function restore(d){
   sv('g-ling',d.ling);sv('g-dens',d.dens);
   rl('key-list','kta',d.keys||[],'li',3);rl('p-central','pta',d.pc||[],'div',3);
   rl('p-sec','pta',d.ps||[],'div',3);rl('p-outros','pta',d.po||[],'div',2);
-  document.getElementById('toggle-lido').checked=d.lido!==false;onLidoChange();
-  document.getElementById('acv-tem').classList.toggle('on',!!d.acvTem);
-  document.getElementById('acv-nao-tem').classList.toggle('on',!!d.acvNaoTem);
-  document.getElementById('acv-quer').classList.toggle('on',!!d.acvQuer);
-  document.getElementById('acv-nao-quer').classList.toggle('on',!!d.acvNaoQuer);
-  document.getElementById('acv-novo').classList.toggle('on',!!d.acvNovo);
-  document.getElementById('acv-sebo').classList.toggle('on',!!d.acvSebo);
-  document.getElementById('acv-faixa-novo').value=d.acvFaixaNovo||'';
-  document.getElementById('acv-faixa-sebo').value=d.acvFaixaSebo||'';
-  onAcervoChange();
+
   setTimeout(()=>{aeAll();shrinkTitle();const o=document.getElementById('f-obs');if(o)shrinkObs(o);},80);
 }
 function sv(gid,val){document.querySelectorAll('#'+gid+' .oitem').forEach(x=>x.classList.toggle('on',x.dataset.v===val));}
@@ -865,11 +764,10 @@ function clearForm(){
   clearCoverDisplay();document.getElementById('f-coverurl').value='';
   document.getElementById('f-btitle').innerText='';
   document.querySelectorAll('#view-form textarea').forEach(el=>el.value='');
-  ['fmt-fisico','fmt-audio','acv-tem','acv-nao-tem','acv-quer','acv-nao-quer','acv-novo','acv-sebo'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  ['fmt-fisico','fmt-audio'].forEach(id=>document.getElementById(id).classList.remove('on'));
   document.querySelectorAll('.nbbl,.oitem').forEach(x=>x.classList.remove('on'));
   document.getElementById('nota-row').classList.remove('has-sel');
-  document.getElementById('toggle-lido').checked=true;document.getElementById('acv-faixa-novo').value='';document.getElementById('acv-faixa-sebo').value='';
-  onLidoChange();onAcervoChange();
+
   rl('key-list','kta',[],'li',3);rl('p-central','pta',[],'div',3);rl('p-sec','pta',[],'div',3);rl('p-outros','pta',[],'div',2);
   setTimeout(()=>{aeAll();shrinkTitle();},80);
 }
@@ -936,9 +834,6 @@ function renderEstante(){
     let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
     const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
     const badges=[];
-    if(book.lido===false)badges.push('<span class="bc-badge nao-lido">Não lido</span>');
-    if(book.acvQuer&&!book.acvTem)badges.push('<span class="bc-badge want">Want</span>');
-    if(book.acvTem)badges.push('<span class="bc-badge fisico">Físico ✓</span>');
     card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+(badges.length?'<div class="bc-badges">'+badges.join('')+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
     const del=document.createElement('button');del.className='bc-del-btn';del.textContent='✕';
     del.onclick=e=>{e.stopPropagation();moveToTrash(book._k);};card.appendChild(del);
@@ -952,21 +847,21 @@ function buildEstanteFilters(lib){
 }
 function renderWant(){
   const lib=getLib();const q=(document.getElementById('want-search').value||'').toLowerCase();
-  const wants=lib.filter(b=>!b.acvTem&&b.acvQuer&&(!q||(b.btitle||'').toLowerCase().includes(q)||(b.fields?.['f-autor']||'').toLowerCase().includes(q)));
+  const wants=lib.filter(b=>b._wishList===true&&(!q||(b.btitle||b._t||'').toLowerCase().includes(q)||(b.fields?.['f-autor']||b._author||'').toLowerCase().includes(q)));
   const grid=document.getElementById('want-grid'),empty=document.getElementById('want-empty');
   grid.innerHTML='';if(!wants.length){empty.style.display='block';return;}empty.style.display='none';
-  const flNovo={'novo-ate40':'Novo até R$40','novo-ate60':'Novo até R$60','novo-ate80':'Novo até R$80','novo-mais80':'Novo +R$80'};
-  const flSebo={'sebo-ate5':'Sebo até R$5','sebo-5a10':'Sebo R$5–10','sebo-10a20':'Sebo R$10–20','sebo-20a30':'Sebo R$20–30','sebo-30a50':'Sebo R$30–50','sebo-50a70':'Sebo R$50–70','sebo-mais70':'Sebo +R$70'};
+  const faixaLabels={'ate5':'até R$5','5a10':'R$5–10','10a25':'R$10–25','25a40':'R$25–40','40a60':'R$40–60','60a80':'R$60–80','mais80':'+R$80'};
   wants.forEach(book=>{
     const card=document.createElement('div');card.className='want-card';
     const src=book.cover||book.coverURL||'';const cvr=src?'<img src="'+src+'" alt="" onerror="this.style.display=\'none\'">':'📖';
-    const faixa=book.acvNovo?(flNovo[book.acvFaixaNovo]||'Novo'):(book.acvSebo?(flSebo[book.acvFaixaSebo]||'Sebo'):'');
+    const faixa=book._wishPrice?faixaLabels[book._wishPrice]||book._wishPrice:'';
     card.innerHTML='<div class="want-cover">'+cvr+'</div><div class="want-info"><div class="want-title">'+(book.btitle||book._t||'')+'</div><div class="want-author">'+(book.fields?.['f-autor']||'')+'</div>'+(faixa?'<span class="want-price">💰 '+faixa+'</span>':'')+'</div><div class="want-actions"><button class="want-toggle comprado" onclick="markComprado('+book._k+');event.stopPropagation()">✓ Comprei!</button><button class="want-toggle" onclick="loadLib('+book._k+');event.stopPropagation()">✏️ Editar</button></div>';
     card.onclick=()=>loadLib(book._k);grid.appendChild(card);});
 }
 async function markComprado(k){
   const lib=getLib();const idx=lib.findIndex(x=>x._k===k);if(idx<0)return;
-  lib[idx].acvTem=true;lib[idx].acvQuer=false;setLib(lib);renderWant();renderEstante();
+  lib[idx]._wishList=false;lib[idx]._wishBought=true;
+  setLib(lib);renderWant();renderEstante();
   const st=document.getElementById('save-status');st.textContent='✓ Marcado como comprado!';setTimeout(()=>st.textContent='',2500);
   if(typeof gConnected!=='undefined'&&gConnected)try{await gSaveBook(lib[idx]);}catch(e){console.error(e);}
 }
@@ -1021,7 +916,57 @@ function renderDashboard(){
     return'<div class="recent-item" onclick="loadLib('+b._k+')"><div class="recent-cover">'+cvr+'</div><div class="recent-info"><div class="recent-book-title">'+(b.btitle||b._t||'')+'</div><div class="recent-author">'+(b.fields?.['f-autor']||'')+'</div><div class="recent-author">'+(b._s||'')+'</div></div>'+(b.nota?'<div class="recent-nota">'+b.nota+'</div>':'')+'</div>';
   }).join('')||'<span style="color:rgba(255,255,255,.6);font-size:12px">Nenhuma ficha ainda.</span>';
 }
-const VIEWS=['dashboard','estante','form','want'];
+
+function renderCatalogo(){
+  const lib=getLib();
+  const userName = gProfile ? (gProfile.name||'').split(' ')[0] : 'Usuário';
+  document.getElementById('cat-user-label').textContent = 'Fichas de ' + userName;
+  // fichas = books with registro or resumo filled (i.e. actually read)
+  const fichas = lib.filter(b => b.fields?.['f-registro']?.trim() || b.fields?.['f-resumo']?.trim() || b.nota);
+  const grid = document.getElementById('catalogo-grid');
+  const empty = document.getElementById('catalogo-empty');
+  grid.innerHTML='';
+  if(!fichas.length){empty.style.display='block';return;}
+  empty.style.display='none';
+  fichas.forEach(book=>{
+    const card=document.createElement('div');card.className='book-card';
+    const src=book.cover||book.coverURL||'';
+    const cvr=src?'<img src="'+src+'" alt="capa" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
+    const phStyle=src?'style="display:none"':'';
+    const phT=(book.btitle||book._t||'').substring(0,30);
+    let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
+    const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
+    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
+    card.onclick=()=>loadLib(book._k);
+    grid.appendChild(card);
+  });
+}
+
+function renderCatalogo(){
+  const lib=getLib();
+  const userName=gProfile?(gProfile.name||'').split(' ')[0]:'Usuário';
+  document.getElementById('cat-user-label').textContent='Fichas de '+userName;
+  const fichas=lib.filter(b=>b.fields?.['f-registro']?.trim()||b.fields?.['f-resumo']?.trim()||b.nota);
+  const grid=document.getElementById('catalogo-grid');
+  const empty=document.getElementById('catalogo-empty');
+  grid.innerHTML='';
+  if(!fichas.length){empty.style.display='block';return;}
+  empty.style.display='none';
+  fichas.forEach(book=>{
+    const card=document.createElement('div');card.className='book-card';
+    const src=book.cover||book.coverURL||'';
+    const cvr=src?'<img src="'+src+'" alt="capa" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
+    const phStyle=src?'style="display:none"':'';
+    const phT=(book.btitle||book._t||'').substring(0,30);
+    let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
+    const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
+    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
+    card.onclick=()=>loadLib(book._k);
+    grid.appendChild(card);
+  });
+}
+
+const VIEWS=['dashboard','estante','want','catalogo','form'];
 function switchView(v){
   VIEWS.forEach(id=>{
     const el=document.getElementById('view-'+id);if(el)el.classList.toggle('active',id===v);
@@ -1033,17 +978,19 @@ function switchView(v){
   if(v==='estante'){renderEstante();updateTrashBadge();}
   else if(v==='dashboard')renderDashboard();
   else if(v==='want')renderWant();
+  else if(v==='catalogo')renderCatalogo();
+  else if(v==='catalogo')renderCatalogo();
 }
 function toggleIOMenu(){const m=document.getElementById('io-menu');m.classList.toggle('open');if(m.classList.contains('open'))setTimeout(()=>document.addEventListener('click',_ioOut,{once:true}),0);}
 function closeIOMenu(){document.getElementById('io-menu').classList.remove('open');}
 function _ioOut(e){if(!document.getElementById('io-wrap').contains(e.target))closeIOMenu();}
-const XLS_COLS=['Título','Autor','Ano Orig','Ano Lida','Gênero','Páginas','Formato','Data Leitura','Nota','Linguagem','Densidade','Obs','Elementos Chave','Pers.Centrais','Pers.Sec','Outros Pers.','Resumo','Registro','URL Capa','Mês/Ano','Lido','Tem Físico','Quer Comprar','Faixa Preço'];
+const XLS_COLS=['Título','Autor','Ano Orig','Ano Lida','Gênero','Páginas','Formato','Data Leitura','Nota','Linguagem','Densidade','Obs','Elementos Chave','Pers.Centrais','Pers.Sec','Outros Pers.','Resumo','Registro','URL Capa','Mês/Ano'];
 function bookToRow(d){
   const f=d.fields||{};const fmt=d.fmt?[d.fmt.fisico?'Físico':'',d.fmt.audio?'Audiobook':''].filter(Boolean).join('|')||'':'';
-  return[d.btitle||f['f-titulo']||'',f['f-autor']||'',f['f-ano-orig']||'',f['f-ano-lida']||'',f['f-genero']||'',f['f-paginas']||'',fmt,f['f-dataleit']||'',d.nota||'',d.ling||'',d.dens||'',f['f-obs']||'',(d.keys||[]).filter(Boolean).join(' | '),(d.pc||[]).filter(Boolean).join(' | '),(d.ps||[]).filter(Boolean).join(' | '),(d.po||[]).filter(Boolean).join(' | '),f['f-resumo']||'',f['f-registro']||'',d.coverURL||'',f['f-date']||d._s||'',d.lido!==false?'Sim':'Não',d.acvTem?'Sim':'Não',d.acvQuer?'Sim':'Não',d.acvFaixa||''];}
+  return[d.btitle||f['f-titulo']||'',f['f-autor']||'',f['f-ano-orig']||'',f['f-ano-lida']||'',f['f-genero']||'',f['f-paginas']||'',fmt,f['f-dataleit']||'',d.nota||'',d.ling||'',d.dens||'',f['f-obs']||'',(d.keys||[]).filter(Boolean).join(' | '),(d.pc||[]).filter(Boolean).join(' | '),(d.ps||[]).filter(Boolean).join(' | '),(d.po||[]).filter(Boolean).join(' | '),f['f-resumo']||'',f['f-registro']||'',d.coverURL||'',f['f-date']||d._s||'',];}
 function rowToBook(row,idx){
   const g=i=>String(row[i]||'').trim();const fmt=g(6);const split=v=>v?v.split('|').map(x=>x.trim()).filter(Boolean):[];
-  return{v:5,_k:Date.now()+idx,_t:g(0)||'Sem título',_s:g(19)||new Date().toLocaleDateString('pt-BR'),btitle:g(0),fields:{'f-titulo':g(0),'f-autor':g(1),'f-ano-orig':g(2),'f-ano-lida':g(3),'f-genero':g(4),'f-paginas':g(5),'f-dataleit':g(7),'f-obs':g(11),'f-resumo':g(16),'f-registro':g(17),'f-date':g(19)},fmt:{fisico:fmt.toLowerCase().includes('físico'),audio:fmt.toLowerCase().includes('audiobook')},nota:parseInt(g(8))||null,ling:g(9)||null,dens:g(10)||null,keys:split(g(12)),pc:split(g(13)),ps:split(g(14)),po:split(g(15)),coverURL:g(18),cover:null,lido:g(20)!=='Não',acvTem:g(21)==='Sim',acvQuer:g(22)==='Sim',acvFaixa:g(23)||''};}
+  return{v:5,_k:Date.now()+idx,_t:g(0)||'Sem título',_s:g(19)||new Date().toLocaleDateString('pt-BR'),btitle:g(0),fields:{'f-titulo':g(0),'f-autor':g(1),'f-ano-orig':g(2),'f-ano-lida':g(3),'f-genero':g(4),'f-paginas':g(5),'f-dataleit':g(7),'f-obs':g(11),'f-resumo':g(16),'f-registro':g(17),'f-date':g(19)},fmt:{fisico:fmt.toLowerCase().includes('físico'),audio:fmt.toLowerCase().includes('audiobook')},nota:parseInt(g(8))||null,ling:g(9)||null,dens:g(10)||null,keys:split(g(12)),pc:split(g(13)),ps:split(g(14)),po:split(g(15)),coverURL:g(18),cover:null};}
 function exportXLSX(){
   if(typeof XLSX==='undefined'){alert('SheetJS não carregou.');return;}
   const ws=XLSX.utils.aoa_to_sheet([XLS_COLS,...getLib().map(bookToRow)]);
