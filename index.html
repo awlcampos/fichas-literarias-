@@ -93,6 +93,16 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 #fab-save.visible{display:flex;}
 #fab-save:hover{background:var(--pm);transform:scale(1.08);}
 #fab-save:active{transform:scale(.95);}
+#fab-close{
+  position:fixed;bottom:80px;right:26px;z-index:301;
+  width:30px;height:30px;border-radius:50%;
+  background:rgba(80,40,120,.82);color:rgba(255,255,255,.88);
+  border:1.5px solid rgba(255,255,255,.35);font-size:14px;
+  cursor:pointer;display:none;align-items:center;justify-content:center;
+  box-shadow:0 2px 8px rgba(80,30,120,.3);transition:background .18s,transform .15s;
+}
+#fab-close.visible{display:flex;}
+#fab-close:hover{background:rgba(180,40,40,.9);color:#fff;transform:scale(1.1);}
 
 /* G-WARN */
 #g-warn{background:#fff3cd;border-radius:10px;padding:9px 13px;margin-bottom:10px;
@@ -349,9 +359,8 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 <div id="nav-bar">
   <button class="nav-btn" id="btn-dashboard" onclick="switchView('dashboard')">📊 Dashboard</button>
   <button class="nav-btn" id="btn-estante" onclick="switchView('estante')">📚 Estante</button>
-  <button class="nav-btn" id="btn-form" onclick="switchView('form')">📋 Ficha</button>
   <button class="nav-btn" id="btn-want" onclick="switchView('want')">🛒 Wish List</button>
-  <button class="nav-btn" id="btn-catalogo" onclick="switchView('catalogo')">📖 Catálogo</button>
+  <button class="nav-btn" id="btn-catalogo" onclick="switchView('catalogo')">📖 Catálogo de Fichas</button>
   <div class="nav-spacer"></div>
   <span id="g-sync" class="g-sync"></span>
   <button class="g-login-btn" id="g-login-btn" onclick="gLogin()">
@@ -396,6 +405,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 
 <!-- FAB -->
 <button id="fab-save" onclick="saveToLib()" title="Salvar ficha">💾</button>
+<button id="fab-close" onclick="fabCloseForm()" title="Fechar sem salvar">✕</button>
 
 <!-- DASHBOARD -->
 <div class="view" id="view-dashboard">
@@ -508,8 +518,14 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 <!-- CATÁLOGO -->
 <div class="view" id="view-catalogo">
   <div class="estante-header">
-    <h2>📖 Catálogo</h2>
-    <p id="cat-user-label" style="color:rgba(255,255,255,.72);font-size:13px"></p>
+    <h2>📖 Catálogo de Fichas</h2>
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px;">
+      <p id="cat-user-label" style="color:rgba(255,255,255,.72);font-size:13px;margin:0;"></p>
+      <button onclick="novaFicha()" title="Nova ficha"
+        style="background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);
+        border-radius:20px;padding:3px 11px;font-size:11px;font-family:Lato,sans-serif;
+        font-weight:700;cursor:pointer;">➕ Nova ficha</button>
+    </div>
   </div>
   <div class="cat-empty" id="catalogo-empty" style="display:none">Nenhuma ficha ainda.<br><small>Preencha fichas de leitura para vê-las aqui.</small></div>
   <div class="book-grid" id="catalogo-grid"></div>
@@ -834,6 +850,14 @@ function loadLib(k){
 }
 function delLib(k){moveToTrash(k);}
 function novaFicha(){_editingKey=null;clearForm();switchView('form');}
+function fabCloseForm(){
+  if(hasUnsavedContent()){
+    if(!confirm('Fechar sem salvar? O conteúdo será perdido.'))return;
+  }
+  _editingKey=null;clearForm();
+  // go back to catalogo (natural origin of ficha)
+  switchView('catalogo');
+}
 function toggleLib(){const p=document.getElementById('library-panel');p.style.display=p.style.display==='block'?'none':'block';if(p.style.display==='block')renderLib();}
 function getTrash(){try{return JSON.parse(localStorage.getItem('trash')||'[]');}catch{return[];}}
 function setTrash(t){try{localStorage.setItem('trash',JSON.stringify(t));}catch{}}
@@ -1149,7 +1173,7 @@ function renderCatalogo(){
   });
 }
 
-const VIEWS=['dashboard','estante','want','catalogo','form'];
+const VIEWS=['dashboard','estante','want','catalogo'];
 function switchView(v){
   VIEWS.forEach(id=>{
     const el=document.getElementById('view-'+id);if(el)el.classList.toggle('active',id===v);
@@ -1157,6 +1181,18 @@ function switchView(v){
   });
   document.getElementById('form-actions').style.display=v==='form'?'flex':'none';
   document.getElementById('fab-save').classList.toggle('visible',v==='form');
+  document.getElementById('fab-close').classList.toggle('visible',v==='form');
+  // form view is not in VIEWS nav, handle manually
+  const formEl=document.getElementById('view-form');
+  if(formEl){
+    if(v==='form'){
+      // hide all VIEWS-based views
+      VIEWS.forEach(id=>{const el=document.getElementById('view-'+id);if(el)el.classList.remove('active');});
+      formEl.classList.add('active');
+    } else {
+      formEl.classList.remove('active');
+    }
+  }
   document.getElementById('library-panel').style.display='none';
   if(v==='estante'){renderEstante();updateTrashBadge();}
   else if(v==='dashboard')renderDashboard();
