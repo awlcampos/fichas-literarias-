@@ -430,33 +430,78 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 <!-- ESTANTE -->
 <div class="view" id="view-estante">
   <div class="estante-header"><h2>Minha Estante</h2><p id="cat-count"></p></div>
-  <div style="display:flex;justify-content:center;margin-bottom:9px;">
+  <div style="display:flex;justify-content:center;gap:8px;margin-bottom:9px;">
     <button class="cat-filter-btn" onclick="toggleTrash()" id="trash-toggle-btn">🗑️ Lixeira</button>
+    <button class="cat-filter-btn" onclick="openAddEstante()" style="background:rgba(107,53,160,.5);border-color:rgba(255,255,255,.5);">➕ Adicionar livro</button>
   </div>
   <div id="trash-panel"><h3>🗑️ Lixeira</h3><div id="trash-list"></div></div>
+  <!-- Add to estante modal -->
+  <div id="estante-add-modal" style="display:none;background:rgba(255,255,255,.95);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 4px 20px rgba(80,30,120,.2);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <strong style="color:var(--pd);font-size:14px;">Adicionar à Estante</strong>
+      <button onclick="closeAddEstante()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888;">✕</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <input id="est-isbn" type="text" placeholder="ISBN (busca automática)" style="flex:1;border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <button onclick="fetchEstanteByISBN()" style="background:var(--pd);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:12px;font-family:Lato,sans-serif;font-weight:700;cursor:pointer;">🔍</button>
+    </div>
+    <div style="text-align:center;color:#aaa;font-size:11px;margin-bottom:8px;">— ou preencha manualmente —</div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <input id="est-titulo" type="text" placeholder="Título *" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <input id="est-autor" type="text" placeholder="Autor" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <input id="est-ano" type="text" placeholder="Ano de publicação" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <input id="est-genero" type="text" placeholder="Gênero" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <input id="est-paginas" type="text" placeholder="Páginas" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <input id="est-capa" type="text" placeholder="URL da capa (opcional)" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+      <button onclick="closeAddEstante()" style="background:none;border:1px solid #ddd;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;">Cancelar</button>
+      <button onclick="saveToEstante()" style="background:var(--pd);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:12px;font-family:Lato,sans-serif;font-weight:700;cursor:pointer;">Adicionar</button>
+    </div>
+  </div>
   <div class="cat-filters" id="cat-filters"></div>
-  <div class="cat-empty" id="cat-empty" style="display:none">Nenhuma ficha ainda.<br><small>Adicione livros pela aba Ficha.</small></div>
+  <div class="cat-empty" id="cat-empty" style="display:none">Nenhum livro na estante ainda.<br><small>Clique em ➕ para adicionar.</small></div>
   <div class="book-grid" id="book-grid"></div>
 </div>
 
 <!-- WANT LIST -->
 <div class="view" id="view-want">
-  <div class="want-header"><h2>🛒 Want List</h2><p style="color:rgba(255,255,255,.72);font-size:12px">Livros que você quer ter no físico</p></div>
-  <input class="want-search" id="want-search" type="text" placeholder="🔍 Buscar por título ou autor..." oninput="renderWant()">
-  <div class="want-empty" id="want-empty" style="display:none">Nenhum livro na want list.<br><small>Marque "Quero comprar" em qualquer ficha.</small></div>
-  <div class="want-grid" id="want-grid"></div>
-</div>
-
-
-<!-- CATÁLOGO -->
-<div class="view" id="view-catalogo">
-  <div class="estante-header">
-    <h2>📖 Catálogo</h2>
-    <p id="cat-user-label" style="color:rgba(255,255,255,.72);font-size:13px"></p>
+  <div class="want-header">
+    <h2>🛒 Wish List</h2>
+    <p style="color:rgba(255,255,255,.72);font-size:12px">Livros que você quer comprar</p>
   </div>
-  <div class="cat-filters" id="catalogo-filters"></div>
-  <div class="cat-empty" id="catalogo-empty" style="display:none">Nenhuma ficha ainda.<br><small>Preencha fichas de leitura para vê-las aqui.</small></div>
-  <div class="book-grid" id="catalogo-grid"></div>
+  <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;flex-wrap:wrap;">
+    <input class="want-search" id="want-search" type="text" placeholder="🔍 Buscar..." oninput="renderWant()" style="margin:0;max-width:280px;">
+    <button class="cat-filter-btn" onclick="toggleWishAdd()" style="background:rgba(107,53,160,.5);border-color:rgba(255,255,255,.5);">➕ Adicionar</button>
+  </div>
+  <!-- add/edit form -->
+  <div id="wish-add-form" style="display:none;background:rgba(255,255,255,.95);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 4px 20px rgba(80,30,120,.2);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <strong id="wish-form-title" style="color:var(--pd);font-size:13px;">Adicionar à Wish List</strong>
+      <button onclick="closeWishAdd()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#888;">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <input id="wish-titulo" type="text" placeholder="Título *" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <input id="wish-autor" type="text" placeholder="Autor" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;">
+      <select id="wish-price" style="border:1px solid #ddd;border-radius:8px;padding:6px 10px;font-family:Lato,sans-serif;font-size:12px;outline:none;color:#333;">
+        <option value="">Valor que toparia pagar</option>
+        <option value="ate5">Até R$ 5</option>
+        <option value="5a10">R$ 5 a R$ 10</option>
+        <option value="10a25">R$ 10 a R$ 25</option>
+        <option value="25a40">R$ 25 a R$ 40</option>
+        <option value="40a60">R$ 40 a R$ 60</option>
+        <option value="60a80">R$ 60 a R$ 80</option>
+        <option value="mais80">Mais de R$ 80</option>
+      </select>
+    </div>
+    <input type="hidden" id="wish-editing-key">
+    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;">
+      <button onclick="closeWishAdd()" style="background:none;border:1px solid #ddd;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;">Cancelar</button>
+      <button onclick="saveWishItem()" style="background:var(--pd);color:#fff;border:none;border-radius:8px;padding:5px 14px;font-size:12px;font-family:Lato,sans-serif;font-weight:700;cursor:pointer;">Salvar</button>
+    </div>
+  </div>
+  <div class="want-empty" id="want-empty" style="display:none">Nenhum livro na wish list ainda.<br><small>Clique em ➕ para adicionar.</small></div>
+  <div class="want-grid" id="want-grid"></div>
 </div>
 
 
@@ -472,6 +517,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 <!-- FICHA -->
 <div class="view" id="view-form">
   <div id="g-warn" style="display:none">⚠️ <strong>Para sincronizar com Google</strong> abra via servidor. No terminal: <code>python -m http.server 8080</code></div>
+  <input type="hidden" id="f-estante-ref" value="">
   <div class="card-header"><textarea class="date-stamp" id="f-date" rows="1" placeholder="Mês Ano" oninput="ae(this);as()"></textarea></div>
 
   <div class="columns">
@@ -769,6 +815,7 @@ function clearForm(){
   document.getElementById('nota-row').classList.remove('has-sel');
 
   rl('key-list','kta',[],'li',3);rl('p-central','pta',[],'div',3);rl('p-sec','pta',[],'div',3);rl('p-outros','pta',[],'div',2);
+  document.getElementById('f-estante-ref').value='';
   setTimeout(()=>{aeAll();shrinkTitle();},80);
 }
 function renderLib(){
@@ -837,6 +884,14 @@ function renderEstante(){
     card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+(badges.length?'<div class="bc-badges">'+badges.join('')+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
     const del=document.createElement('button');del.className='bc-del-btn';del.textContent='✕';
     del.onclick=e=>{e.stopPropagation();moveToTrash(book._k);};card.appendChild(del);
+    // lido badge/button on card
+    const lido=book._estanteLido===true||!!(book.fields?.['f-registro']?.trim()||book.fields?.['f-resumo']?.trim()||book.nota);
+    const lidoBtn=document.createElement('button');
+    lidoBtn.title=lido?'Marcar como não lido':'Marcar como lido';
+    lidoBtn.style.cssText='position:absolute;bottom:5px;right:5px;background:'+(lido?'rgba(100,180,100,.9)':'rgba(180,180,180,.7)')+';color:#fff;border:none;border-radius:12px;padding:2px 7px;font-size:9px;font-weight:700;cursor:pointer;z-index:10;';
+    lidoBtn.textContent=lido?'✓ Lido':'○ Não lido';
+    lidoBtn.onclick=e=>{e.stopPropagation();toggleEstanteLido(book._k);};
+    card.appendChild(lidoBtn);
     card.onclick=()=>loadLib(book._k);grid.appendChild(card);});
 }
 function buildEstanteFilters(lib){
@@ -845,25 +900,177 @@ function buildEstanteFilters(lib){
   const all=document.createElement('button');all.className='cat-filter-btn'+(catFilter==='all'?' active':'');all.textContent='Todos';all.onclick=()=>{catFilter='all';renderEstante();};fc.appendChild(all);
   genres.forEach(g=>{const b=document.createElement('button');b.className='cat-filter-btn'+(catFilter===g?' active':'');b.textContent=g;b.onclick=()=>{catFilter=g;renderEstante();};fc.appendChild(b);});
 }
+// ══ WISH LIST (independent storage) ══
+const WISH_LABELS={'ate5':'até R$5','5a10':'R$5–10','10a25':'R$10–25','25a40':'R$25–40','40a60':'R$40–60','60a80':'R$60–80','mais80':'+R$80'};
+function getWishList(){try{return JSON.parse(localStorage.getItem('wishlist')||'[]');}catch{return[];}}
+function setWishList(l){try{localStorage.setItem('wishlist',JSON.stringify(l));}catch{}}
+
 function renderWant(){
-  const lib=getLib();const q=(document.getElementById('want-search').value||'').toLowerCase();
-  const wants=lib.filter(b=>b._wishList===true&&(!q||(b.btitle||b._t||'').toLowerCase().includes(q)||(b.fields?.['f-autor']||b._author||'').toLowerCase().includes(q)));
+  const wishes=getWishList();
+  const q=(document.getElementById('want-search').value||'').toLowerCase();
+  const filtered=q?wishes.filter(w=>(w.titulo||'').toLowerCase().includes(q)||(w.autor||'').toLowerCase().includes(q)):wishes;
   const grid=document.getElementById('want-grid'),empty=document.getElementById('want-empty');
-  grid.innerHTML='';if(!wants.length){empty.style.display='block';return;}empty.style.display='none';
-  const faixaLabels={'ate5':'até R$5','5a10':'R$5–10','10a25':'R$10–25','25a40':'R$25–40','40a60':'R$40–60','60a80':'R$60–80','mais80':'+R$80'};
-  wants.forEach(book=>{
+  grid.innerHTML='';
+  if(!filtered.length){empty.style.display='block';return;}
+  empty.style.display='none';
+  filtered.forEach(w=>{
     const card=document.createElement('div');card.className='want-card';
-    const src=book.cover||book.coverURL||'';const cvr=src?'<img src="'+src+'" alt="" onerror="this.style.display=\'none\'">':'📖';
-    const faixa=book._wishPrice?faixaLabels[book._wishPrice]||book._wishPrice:'';
-    card.innerHTML='<div class="want-cover">'+cvr+'</div><div class="want-info"><div class="want-title">'+(book.btitle||book._t||'')+'</div><div class="want-author">'+(book.fields?.['f-autor']||'')+'</div>'+(faixa?'<span class="want-price">💰 '+faixa+'</span>':'')+'</div><div class="want-actions"><button class="want-toggle comprado" onclick="markComprado('+book._k+');event.stopPropagation()">✓ Comprei!</button><button class="want-toggle" onclick="loadLib('+book._k+');event.stopPropagation()">✏️ Editar</button></div>';
-    card.onclick=()=>loadLib(book._k);grid.appendChild(card);});
+    const faixa=w.price?WISH_LABELS[w.price]||w.price:'';
+    card.innerHTML=
+      '<div class="want-cover">📖</div>'+
+      '<div class="want-info">'+
+        '<div class="want-title">'+(w.titulo||'Sem título')+'</div>'+
+        '<div class="want-author">'+(w.autor||'')+'</div>'+
+        (faixa?'<span class="want-price">💰 '+faixa+'</span>':'')+
+      '</div>'+
+      '<div class="want-actions">'+
+        '<button class="want-toggle comprado" title="Marcar como comprado" onclick="wishComprado('+w._k+');event.stopPropagation()">🛍️</button>'+
+        '<button class="want-toggle" title="Editar" onclick="editWish('+w._k+');event.stopPropagation()">✏️</button>'+
+        '<button class="want-toggle" title="Excluir" onclick="deleteWish('+w._k+');event.stopPropagation()" style="color:#e55;">🗑️</button>'+
+      '</div>';
+    grid.appendChild(card);
+  });
 }
-async function markComprado(k){
+
+function toggleWishAdd(){
+  const f=document.getElementById('wish-add-form');
+  if(f.style.display!=='none'){closeWishAdd();return;}
+  f.style.display='block';
+  document.getElementById('wish-form-title').textContent='Adicionar à Wish List';
+  document.getElementById('wish-titulo').value='';
+  document.getElementById('wish-autor').value='';
+  document.getElementById('wish-price').value='';
+  document.getElementById('wish-editing-key').value='';
+  document.getElementById('wish-titulo').focus();
+}
+function closeWishAdd(){document.getElementById('wish-add-form').style.display='none';}
+
+function saveWishItem(){
+  const titulo=document.getElementById('wish-titulo').value.trim();
+  if(!titulo){alert('Título é obrigatório.');return;}
+  const autor=document.getElementById('wish-autor').value.trim();
+  const price=document.getElementById('wish-price').value;
+  const editKey=parseInt(document.getElementById('wish-editing-key').value)||null;
+  const wishes=getWishList();
+  if(editKey){
+    const idx=wishes.findIndex(x=>x._k===editKey);
+    if(idx>=0){wishes[idx].titulo=titulo;wishes[idx].autor=autor;wishes[idx].price=price;}
+  }else{
+    wishes.push({_k:Date.now(),titulo,autor,price,_added:new Date().toLocaleDateString('pt-BR')});
+  }
+  setWishList(wishes);closeWishAdd();renderWant();
+}
+
+function editWish(k){
+  const w=getWishList().find(x=>x._k===k);if(!w)return;
+  const f=document.getElementById('wish-add-form');
+  f.style.display='block';
+  document.getElementById('wish-form-title').textContent='Editar item';
+  document.getElementById('wish-titulo').value=w.titulo||'';
+  document.getElementById('wish-autor').value=w.autor||'';
+  document.getElementById('wish-price').value=w.price||'';
+  document.getElementById('wish-editing-key').value=String(k);
+}
+
+function deleteWish(k){
+  if(!confirm('Remover da wish list?'))return;
+  setWishList(getWishList().filter(x=>x._k!==k));renderWant();
+}
+
+function wishComprado(k){
+  const wishes=getWishList();
+  const w=wishes.find(x=>x._k===k);if(!w)return;
+  const lib=getLib();
+  const exists=lib.some(b=>(b.btitle||b.fields?.['f-titulo']||'').toLowerCase()===(w.titulo||'').toLowerCase());
+  if(!exists){
+    lib.push({
+      _k:Date.now(),_t:w.titulo,_s:new Date().toLocaleDateString('pt-BR'),v:5,
+      btitle:w.titulo,
+      fields:{'f-titulo':w.titulo,'f-autor':w.autor||'','f-ano-orig':'','f-ano-lida':'',
+        'f-genero':'','f-paginas':'','f-dataleit':'','f-obs':'','f-resumo':'','f-registro':'','f-date':''},
+      fmt:{fisico:true,audio:false},nota:null,ling:null,dens:null,
+      keys:[],pc:[],ps:[],po:[],coverURL:'',cover:null,_estanteLido:false
+    });
+    setLib(lib);renderEstante();
+    const st=document.getElementById('save-status');
+    st.textContent='✓ "'+w.titulo+'" adicionado à estante!';setTimeout(()=>st.textContent='',3000);
+  }else{
+    const st=document.getElementById('save-status');
+    st.textContent='📚 Já está na estante!';setTimeout(()=>st.textContent='',2500);
+  }
+  setWishList(wishes.filter(x=>x._k!==k));renderWant();
+}
+
+// ══ ESTANTE ADD ══
+function openAddEstante(){
+  const m=document.getElementById('estante-add-modal');
+  m.style.display='block';
+  ['est-isbn','est-titulo','est-autor','est-ano','est-genero','est-paginas','est-capa'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('est-titulo').focus();
+}
+function closeAddEstante(){document.getElementById('estante-add-modal').style.display='none';}
+
+async function fetchEstanteByISBN(){
+  const isbn=(document.getElementById('est-isbn').value||'').replace(/\D/g,'');
+  if(isbn.length<10){alert('ISBN inválido.');return;}
+  try{
+    const data=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+isbn+'&maxResults=1').then(r=>r.json());
+    const info=data.items?.[0]?.volumeInfo||{};
+    if(info.title)document.getElementById('est-titulo').value=info.title;
+    if(info.authors)document.getElementById('est-autor').value=info.authors.join(', ');
+    if(info.publishedDate)document.getElementById('est-ano').value=(info.publishedDate.match(/\d{4}/)||[''])[0];
+    if(info.categories)document.getElementById('est-genero').value=info.categories[0]||'';
+    if(info.pageCount)document.getElementById('est-paginas').value=String(info.pageCount);
+    let img=info.imageLinks?.large||info.imageLinks?.medium||info.imageLinks?.thumbnail||'';
+    img=img.replace('http://','https://').replace('&edge=curl','').replace('zoom=1','zoom=0');
+    if(img)document.getElementById('est-capa').value=img;
+  }catch(e){alert('Erro ao buscar ISBN.');}
+}
+
+function saveToEstante(){
+  const titulo=document.getElementById('est-titulo').value.trim();
+  if(!titulo){alert('Título é obrigatório.');return;}
+  const lib=getLib();
+  const exists=lib.some(b=>(b.btitle||b.fields?.['f-titulo']||'').toLowerCase()===titulo.toLowerCase());
+  if(exists){alert('"'+titulo+'" já está na estante.');return;}
+  lib.push({
+    _k:Date.now(),_t:titulo,_s:new Date().toLocaleDateString('pt-BR'),v:5,btitle:titulo,
+    fields:{
+      'f-titulo':titulo,'f-autor':document.getElementById('est-autor').value.trim(),
+      'f-ano-orig':document.getElementById('est-ano').value.trim(),'f-ano-lida':'',
+      'f-genero':document.getElementById('est-genero').value.trim(),
+      'f-paginas':document.getElementById('est-paginas').value.trim(),
+      'f-dataleit':'','f-obs':'','f-resumo':'','f-registro':'','f-date':''
+    },
+    fmt:{fisico:true,audio:false},nota:null,ling:null,dens:null,
+    keys:[],pc:[],ps:[],po:[],
+    coverURL:document.getElementById('est-capa').value.trim(),cover:null,_estanteLido:false
+  });
+  setLib(lib);closeAddEstante();renderEstante();
+  const st=document.getElementById('save-status');
+  st.textContent='✓ "'+titulo+'" adicionado!';setTimeout(()=>st.textContent='',3000);
+}
+
+// toggle lido on estante card
+async function toggleEstanteLido(k){
   const lib=getLib();const idx=lib.findIndex(x=>x._k===k);if(idx<0)return;
-  lib[idx]._wishList=false;lib[idx]._wishBought=true;
-  setLib(lib);renderWant();renderEstante();
-  const st=document.getElementById('save-status');st.textContent='✓ Marcado como comprado!';setTimeout(()=>st.textContent='',2500);
-  if(typeof gConnected!=='undefined'&&gConnected)try{await gSaveBook(lib[idx]);}catch(e){console.error(e);}
+  const wasLido=lib[idx]._estanteLido===true;
+  lib[idx]._estanteLido=!wasLido;setLib(lib);
+  if(!wasLido){
+    // pre-fill ficha
+    const book=lib[idx];
+    _editingKey=null;clearForm();
+    const btEl=document.getElementById('f-btitle');btEl.innerText=book.btitle||'';shrinkTitle();
+    [['f-titulo',book.btitle],['f-autor',book.fields?.['f-autor']],['f-ano-orig',book.fields?.['f-ano-orig']],
+     ['f-genero',book.fields?.['f-genero']],['f-paginas',book.fields?.['f-paginas']]].forEach(([id,val])=>{
+      const el=document.getElementById(id);if(el&&val){el.value=val;ae(el);}});
+    if(book.coverURL){coverURL=book.coverURL;document.getElementById('f-coverurl').value=book.coverURL;setCoverDisplay(book.coverURL);}
+    else if(book.cover){coverB64=book.cover;setCoverDisplay(book.cover);}
+    document.getElementById('f-estante-ref').value=String(k);
+    switchView('form');
+  }else{
+    renderEstante();
+  }
 }
 function saveGoal(v){localStorage.setItem('readingGoal',v);}
 const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -917,30 +1124,6 @@ function renderDashboard(){
   }).join('')||'<span style="color:rgba(255,255,255,.6);font-size:12px">Nenhuma ficha ainda.</span>';
 }
 
-function renderCatalogo(){
-  const lib=getLib();
-  const userName = gProfile ? (gProfile.name||'').split(' ')[0] : 'Usuário';
-  document.getElementById('cat-user-label').textContent = 'Fichas de ' + userName;
-  // fichas = books with registro or resumo filled (i.e. actually read)
-  const fichas = lib.filter(b => b.fields?.['f-registro']?.trim() || b.fields?.['f-resumo']?.trim() || b.nota);
-  const grid = document.getElementById('catalogo-grid');
-  const empty = document.getElementById('catalogo-empty');
-  grid.innerHTML='';
-  if(!fichas.length){empty.style.display='block';return;}
-  empty.style.display='none';
-  fichas.forEach(book=>{
-    const card=document.createElement('div');card.className='book-card';
-    const src=book.cover||book.coverURL||'';
-    const cvr=src?'<img src="'+src+'" alt="capa" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">':'';
-    const phStyle=src?'style="display:none"':'';
-    const phT=(book.btitle||book._t||'').substring(0,30);
-    let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
-    const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
-    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
-    card.onclick=()=>loadLib(book._k);
-    grid.appendChild(card);
-  });
-}
 
 function renderCatalogo(){
   const lib=getLib();
@@ -977,7 +1160,7 @@ function switchView(v){
   document.getElementById('library-panel').style.display='none';
   if(v==='estante'){renderEstante();updateTrashBadge();}
   else if(v==='dashboard')renderDashboard();
-  else if(v==='want')renderWant();
+  else if(v==='want'){renderWant();closeWishAdd();}
   else if(v==='catalogo')renderCatalogo();
   else if(v==='catalogo')renderCatalogo();
 }
