@@ -372,6 +372,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
     <span class="g-username" id="g-username"></span>
     <button class="g-logout-btn" onclick="gLogout()">Sair</button>
     <button class="g-logout-btn" onclick="gResetDrive()" title="Redefinir pasta">🔄</button>
+    <button class="g-logout-btn" onclick="openSharedSettings()" title="Planilha compartilhada">🔗</button>
   </div>
 </div>
 
@@ -406,6 +407,26 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 <!-- FAB -->
 <button id="fab-save" onclick="saveToLib()" title="Salvar ficha">💾</button>
 <button id="fab-close" onclick="fabCloseForm()" title="Fechar sem salvar">✕</button>
+
+<!-- SHARED SHEET SETTINGS -->
+<div id="shared-settings-modal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.5);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.3);">
+    <h3 style="color:var(--pd);margin-bottom:12px;font-size:16px;">🔗 Planilha Compartilhada</h3>
+    <p style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.5;">
+      A <strong>Estante</strong> e a <strong>Wish List</strong> são compartilhadas entre vocês dois.<br>
+      Cole abaixo o link ou ID da planilha compartilhada do Google Sheets.<br><br>
+      <em>Dica: Daianna cria a planilha no Drive, compartilha com Antonio (edição), e os dois colam o mesmo link aqui.</em>
+    </p>
+    <input id="shared-ss-input" type="text" placeholder="Cole o link ou ID da planilha..." 
+      style="width:100%;border:1px solid #ddd;border-radius:8px;padding:8px 12px;font-size:12px;font-family:Lato,sans-serif;outline:none;margin-bottom:10px;">
+    <p id="shared-ss-status" style="font-size:11px;color:var(--pd);margin-bottom:10px;min-height:16px;"></p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button onclick="closeSharedSettings()" style="background:none;border:1px solid #ddd;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;">Cancelar</button>
+      <button onclick="clearSharedSettings()" style="background:#fee;border:1px solid #faa;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;color:#c00;">Limpar</button>
+      <button onclick="saveSharedSettings()" style="background:var(--pd);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:12px;font-family:Lato,sans-serif;font-weight:700;cursor:pointer;">Salvar</button>
+    </div>
+  </div>
+</div>
 
 <!-- DASHBOARD -->
 <div class="view" id="view-dashboard">
@@ -889,11 +910,19 @@ function toggleTrash(){const p=document.getElementById('trash-panel');p.style.di
 function updateTrashBadge(){const n=getTrash().length;const btn=document.getElementById('trash-toggle-btn');if(btn)btn.textContent=n>0?'🗑️ Lixeira ('+n+')':'🗑️ Lixeira';}
 let catFilter='all';
 function renderEstante(){
-  const lib=getLib(),grid=document.getElementById('book-grid'),empty=document.getElementById('cat-empty');
-  const lidos=lib.filter(b=>b.lido!==false);
-  document.getElementById('cat-count').textContent=lib.length+' livro'+(lib.length!==1?'s':'')+' • '+lidos.length+' lido'+(lidos.length!==1?'s':'');
-  buildEstanteFilters(lib);
-  const filtered=catFilter==='all'?lib:lib.filter(b=>(b.fields?.['f-genero']||'').toLowerCase().includes(catFilter.toLowerCase()));
+  // merge: shared estante books + personal fichas (union by title)
+  const estante=getEstante();
+  const lib=getLib();
+  // add fichas not already in estante
+  const estanteTitles=new Set(estante.map(b=>(b.btitle||'').toLowerCase()));
+  const fichaBooks=lib.filter(b=>(b.fields?.['f-resumo']?.trim()||b.fields?.['f-registro']?.trim()||b.nota)&&!estanteTitles.has((b.btitle||'').toLowerCase()));
+  const allBooks=[...estante,...fichaBooks];
+  const grid=document.getElementById('book-grid'),empty=document.getElementById('cat-empty');
+  const lidos=allBooks.filter(b=>b._estanteLido===true||b.nota);
+  document.getElementById('cat-count').textContent=allBooks.length+' livro'+(allBooks.length!==1?'s':'')+' • '+lidos.length+' lido'+(lidos.length!==1?'s':'');
+  buildEstanteFilters(allBooks);
+  const lib2=allBooks;
+  const filtered=catFilter==='all'?lib2:lib2.filter(b=>(b.fields?.['f-genero']||'').toLowerCase().includes(catFilter.toLowerCase()));
   grid.innerHTML='';
   if(!filtered.length){empty.style.display='block';return;}
   empty.style.display='none';
@@ -906,18 +935,14 @@ function renderEstante(){
     let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
     const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
     const badges=[];
-    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+(badges.length?'<div class="bc-badges">'+badges.join('')+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
+    const lido=book._estanteLido===true||!!(book.fields?.['f-registro']?.trim()||book.fields?.['f-resumo']?.trim()||book.nota);
+    const lidoStyle=lido?'background:rgba(80,160,80,.15);color:#2e7d32;border-color:rgba(80,160,80,.4);':'background:rgba(180,180,180,.1);color:#666;border-color:rgba(0,0,0,.15);';
+    const lidoLabel=lido?'✓ Lido':'○ Não lido';
+    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<button onclick="toggleEstanteLido('+book._k+');event.stopPropagation()" style="margin-top:4px;'+lidoStyle+'border:1px solid;border-radius:10px;padding:1px 7px;font-size:9px;font-weight:700;cursor:pointer;width:100%;font-family:Lato,sans-serif;">'+lidoLabel+'</button>'+(book._s?'<div class="bc-date">'+book._s+'</div>':'')+'</div>';
     const del=document.createElement('button');del.className='bc-del-btn';del.textContent='✕';
     del.onclick=e=>{e.stopPropagation();moveToTrash(book._k);};card.appendChild(del);
-    // lido badge/button on card
-    const lido=book._estanteLido===true||!!(book.fields?.['f-registro']?.trim()||book.fields?.['f-resumo']?.trim()||book.nota);
-    const lidoBtn=document.createElement('button');
-    lidoBtn.title=lido?'Marcar como não lido':'Marcar como lido';
-    lidoBtn.style.cssText='position:absolute;bottom:5px;right:5px;background:'+(lido?'rgba(100,180,100,.9)':'rgba(180,180,180,.7)')+';color:#fff;border:none;border-radius:12px;padding:2px 7px;font-size:9px;font-weight:700;cursor:pointer;z-index:10;';
-    lidoBtn.textContent=lido?'✓ Lido':'○ Não lido';
-    lidoBtn.onclick=e=>{e.stopPropagation();toggleEstanteLido(book._k);};
-    card.appendChild(lidoBtn);
-    card.onclick=()=>loadLib(book._k);grid.appendChild(card);});
+    card.onclick=()=>loadLib(book._k);
+    grid.appendChild(card);});
 }
 function buildEstanteFilters(lib){
   const genres=new Set();lib.forEach(b=>(b.fields?.['f-genero']||'').split(/[,\n]/).forEach(p=>{const t=p.trim();if(t)genres.add(t.substring(0,20));}));
@@ -986,7 +1011,7 @@ function saveWishItem(){
   setWishList(wishes);closeWishAdd();renderWant();
   // sync to Sheets
   const saved=editKey?wishes.find(x=>x._k===editKey):wishes[wishes.length-1];
-  if(saved&&typeof gConnected!=='undefined'&&gConnected)gSaveWish(saved).catch(e=>console.error(e));
+  if(saved&&typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gSaveSharedWish(saved).catch(e=>console.error(e));
 }
 
 function editWish(k){
@@ -1003,7 +1028,7 @@ function editWish(k){
 function deleteWish(k){
   if(!confirm('Remover da wish list?'))return;
   setWishList(getWishList().filter(x=>x._k!==k));renderWant();
-  if(typeof gConnected!=='undefined'&&gConnected)gDeleteWishSheet(k).catch(e=>console.error(e));
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gDeleteSharedRow('WishList',k).catch(e=>console.error(e));
 }
 
 function wishComprado(k){
@@ -1012,15 +1037,11 @@ function wishComprado(k){
   const lib=getLib();
   const exists=lib.some(b=>(b.btitle||b.fields?.['f-titulo']||'').toLowerCase()===(w.titulo||'').toLowerCase());
   if(!exists){
-    lib.push({
-      _k:Date.now(),_t:w.titulo,_s:new Date().toLocaleDateString('pt-BR'),v:5,
-      btitle:w.titulo,
-      fields:{'f-titulo':w.titulo,'f-autor':w.autor||'','f-ano-orig':'','f-ano-lida':'',
-        'f-genero':'','f-paginas':'','f-dataleit':'','f-obs':'','f-resumo':'','f-registro':'','f-date':''},
-      fmt:{fisico:true,audio:false},nota:null,ling:null,dens:null,
-      keys:[],pc:[],ps:[],po:[],coverURL:'',cover:null,_estanteLido:false
-    });
-    setLib(lib);renderEstante();
+    const nb={_k:Date.now(),_t:w.titulo,_s:new Date().toLocaleDateString('pt-BR'),
+      btitle:w.titulo,fields:{'f-titulo':w.titulo,'f-autor':w.autor||''},
+      coverURL:'',cover:null,_estanteLido:false,nota:null};
+    const estante=getEstante();estante.push(nb);setEstante(estante);renderEstante();
+    if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gSaveEstanteBook(nb).catch(e=>console.error(e));
     const st=document.getElementById('save-status');
     st.textContent='✓ "'+w.titulo+'" adicionado à estante!';setTimeout(()=>st.textContent='',3000);
   }else{
@@ -1028,7 +1049,7 @@ function wishComprado(k){
     st.textContent='📚 Já está na estante!';setTimeout(()=>st.textContent='',2500);
   }
   setWishList(wishes.filter(x=>x._k!==k));renderWant();
-  if(typeof gConnected!=='undefined'&&gConnected)gDeleteWishSheet(k).catch(e=>console.error(e));
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gDeleteSharedRow('WishList',k).catch(e=>console.error(e));
 }
 
 // ══ ESTANTE ADD ══
@@ -1076,9 +1097,12 @@ function saveToEstante(){
     keys:[],pc:[],ps:[],po:[],
     coverURL:document.getElementById('est-capa').value.trim(),cover:null,_estanteLido:false
   });
-  setLib(lib);closeAddEstante();renderEstante();
+  const estante=getEstante();estante.push(newBook);setEstante(estante);
+  closeAddEstante();renderEstante();
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gSaveEstanteBook(newBook).catch(e=>console.error(e));
   const st=document.getElementById('save-status');
   st.textContent='✓ "'+titulo+'" adicionado!';setTimeout(()=>st.textContent='',3000);
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gSaveEstanteBook(newBook).catch(e=>console.error(e));
 }
 
 // toggle lido on estante card
@@ -1318,6 +1342,8 @@ const G_SHEET_T   = 'Lixeira';
 const G_SHEET_W   = 'WishList';
 const G_WISH_HEADERS = ['_key','Título','Autor','Faixa de Preço','Data de adição'];
 const G_FOLDER_PATH = ['Projetos','Fichas Literárias'];
+const G_SHEET_E = 'Estante'; // shared sheet tabs
+let gSharedSsId = localStorage.getItem('g_shared_ssid')||null;
 
 // headers for sheets (col A = _key, then all data)
 const G_HEADERS = ['_key','Título','Autor','Ano Orig','Ano Lida','Gênero','Páginas','Formato','Data Leitura','Nota','Linguagem','Densidade','Obs','Elementos Chave','Pers.Centrais','Pers.Secundários','Outros Pers.','Resumo','Registro','URL Capa','Capa Base64','Mês/Ano','_savedAt','_title'];
@@ -1447,6 +1473,8 @@ async function gAfterLogin(){
     try{localStorage.setItem('g_profile',JSON.stringify(gProfile));}catch(e){}
     gUpdateUI(true);
     await gSetupStorage();
+    if(gSharedSsId)setTimeout(()=>gLoadShared().catch(e=>console.warn('shared:',e)),500);
+    if(gSharedSsId)gLoadShared().catch(e=>console.warn('shared load:',e));
   }catch(e){
     console.error(e);
     gSetSync('⚠️ '+e.message,'err');
@@ -1866,6 +1894,119 @@ async function gSyncImportedBooks(newBooks){
   }catch(e){console.error(e);gSetSync('⚠️ '+e.message,'err');}
 }
 
+
+// ══ SHARED SPREADSHEET SETTINGS ══
+function openSharedSettings(){
+  const modal=document.getElementById('shared-settings-modal');
+  modal.style.display='flex';
+  const input=document.getElementById('shared-ss-input');
+  input.value=gSharedSsId||'';
+  const st=document.getElementById('shared-ss-status');
+  st.textContent=gSharedSsId?'✓ Planilha configurada: '+gSharedSsId.substring(0,20)+'...':'Nenhuma planilha configurada ainda.';
+}
+function closeSharedSettings(){document.getElementById('shared-settings-modal').style.display='none';}
+function clearSharedSettings(){
+  gSharedSsId=null;localStorage.removeItem('g_shared_ssid');
+  document.getElementById('shared-ss-status').textContent='Vínculo removido.';
+  document.getElementById('shared-ss-input').value='';
+}
+function saveSharedSettings(){
+  const raw=document.getElementById('shared-ss-input').value.trim();
+  if(!raw){alert('Cole o link ou ID da planilha.');return;}
+  // extract ID from URL if full link pasted
+  let ssId=raw;
+  const m=raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if(m)ssId=m[1];
+  gSharedSsId=ssId;localStorage.setItem('g_shared_ssid',ssId);
+  document.getElementById('shared-ss-status').textContent='✓ Salvo! Recarregando dados...';
+  setTimeout(()=>{closeSharedSettings();gLoadShared();},800);
+}
+
+// ══ SHARED DATA: Estante + WishList ══
+function getEstante(){try{return JSON.parse(localStorage.getItem('estante')||'[]');}catch{return[];}}
+function setEstante(l){try{localStorage.setItem('estante',JSON.stringify(l));}catch{}}
+
+async function gLoadShared(){
+  if(!gConnected||!gSharedSsId)return;
+  gSetSync('⏳ Carregando compartilhado...','busy');
+  try{
+    // load estante from shared sheet
+    const re=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A:J')}`);
+    const erows=(re.values||[]).slice(1).filter(row=>row[0]);
+    const estante=erows.map(row=>({
+      _k:parseInt(row[0])||Date.now(),
+      btitle:String(row[1]||''),_t:String(row[1]||''),
+      fields:{'f-titulo':String(row[1]||''),'f-autor':String(row[2]||''),
+        'f-ano-orig':String(row[3]||''),'f-genero':String(row[4]||''),
+        'f-paginas':String(row[5]||'')},
+      coverURL:String(row[6]||''),cover:null,
+      _estanteLido:row[7]==='Sim',
+      _s:String(row[8]||''),nota:parseInt(row[9])||null
+    }));
+    setEstante(estante);
+    // load shared wish list
+    const rw=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('WishList!A:E')}`);
+    const wrows=(rw.values||[]).slice(1).filter(row=>row[0]);
+    const wishes=wrows.map(row=>({
+      _k:parseInt(row[0])||Date.now(),titulo:String(row[1]||''),
+      autor:String(row[2]||''),price:String(row[3]||''),_added:String(row[4]||'')
+    }));
+    localStorage.setItem('wishlist',JSON.stringify(wishes));
+    renderEstante();renderWant();
+    gSetSync('✓ Sincronizado','ok');
+  }catch(e){
+    console.error('gLoadShared error:',e);
+    gSetSync('⚠️ Erro planilha compartilhada','err');
+  }
+}
+
+async function gSaveEstanteBook(book){
+  if(!gConnected||!gSharedSsId)return;
+  const row=[String(book._k),book.btitle||'',book.fields?.['f-autor']||'',
+    book.fields?.['f-ano-orig']||'',book.fields?.['f-genero']||'',
+    book.fields?.['f-paginas']||'',book.coverURL||'',
+    book._estanteLido?'Sim':'Não',book._s||'',String(book.nota||'')];
+  const existingRow=await gFindRowInSheet(gSharedSsId,'Estante',book._k);
+  if(existingRow){
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A'+existingRow+':J'+existingRow)}?valueInputOption=RAW`,
+      {method:'PUT',body:JSON.stringify({values:[row]})});
+  }else{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A:J')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {method:'POST',body:JSON.stringify({values:[row]})});
+  }
+}
+
+async function gSaveSharedWish(w){
+  if(!gConnected||!gSharedSsId)return;
+  const row=[String(w._k),w.titulo||'',w.autor||'',w.price||'',w._added||''];
+  const existingRow=await gFindRowInSheet(gSharedSsId,'WishList',w._k);
+  if(existingRow){
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('WishList!A'+existingRow+':E'+existingRow)}?valueInputOption=RAW`,
+      {method:'PUT',body:JSON.stringify({values:[row]})});
+  }else{
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('WishList!A:E')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {method:'POST',body:JSON.stringify({values:[row]})});
+  }
+}
+
+async function gDeleteSharedRow(sheetName,k){
+  if(!gConnected||!gSharedSsId)return;
+  const rowIdx=await gFindRowInSheet(gSharedSsId,sheetName,k);if(!rowIdx)return;
+  const meta=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}?fields=sheets.properties`);
+  const sheet=meta.sheets.find(s=>s.properties.title===sheetName);if(!sheet)return;
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}:batchUpdate`,{
+    method:'POST',body:JSON.stringify({requests:[{deleteDimension:{range:{sheetId:sheet.properties.sheetId,dimension:'ROWS',startIndex:rowIdx-1,endIndex:rowIdx}}}]})
+  });
+}
+
+async function gFindRowInSheet(ssId,sheetName,key){
+  const r=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${ssId}/values/${encodeURIComponent(sheetName+'!A:A')}`);
+  const vals=r.values||[];
+  for(let i=1;i<vals.length;i++)if(String(vals[i][0])===String(key))return i+1;
+  return null;
+}
+
+
 function gTryRestoreSession(){
   const storedToken=localStorage.getItem('g_token');
   const tokenExp=parseInt(localStorage.getItem('g_token_exp')||'0');
@@ -1875,7 +2016,7 @@ function gTryRestoreSession(){
   if(tokenExp>Date.now()){
     gToken=storedToken;if(gProfile)gUpdateUI(true);
     gSetSync('⏳ Reconectando...','busy');
-    gSetupStorage().catch(e=>{localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');gToken=null;gProfile=null;gConnected=false;gUpdateUI(false);gSetSync('','');});
+    gSetupStorage().then(()=>{if(gSharedSsId)gLoadShared().catch(e=>console.warn('shared:',e));}).catch(e=>{localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');gToken=null;gProfile=null;gConnected=false;gUpdateUI(false);gSetSync('','');});
   }else{
     gSetSync('⏳ Atualizando sessão...','busy');
     try{gTokenClient.requestAccessToken({prompt:''});}
@@ -1885,7 +2026,7 @@ function gTryRestoreSession(){
 window.addEventListener('load',()=>{
   if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
   if(location.protocol==='file:')document.getElementById('g-warn').style.display='block';
-  switchView('estante');
+  switchView('dashboard');
   try{const d=localStorage.getItem('draft');if(d)restore(JSON.parse(d));}catch(e){}
   setTimeout(aeAll,100);
   const tryInit=()=>{if(typeof google==='undefined'){setTimeout(tryInit,400);return;}gInitClient();setTimeout(gTryRestoreSession,300);};
