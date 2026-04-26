@@ -483,6 +483,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
   <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;flex-wrap:wrap;">
     <input class="want-search" id="want-search" type="text" placeholder="🔍 Buscar..." oninput="renderWant()" style="margin:0;max-width:280px;">
     <button class="cat-filter-btn" onclick="toggleWishAdd()" style="background:rgba(107,53,160,.5);border-color:rgba(255,255,255,.5);">➕ Adicionar</button>
+    <button class="cat-filter-btn" onclick="exportWishXLSX()" style="background:rgba(40,100,60,.5);border-color:rgba(255,255,255,.4);" title="Exportar para enviar a sebos">⬇️ Exportar lista</button>
   </div>
   <!-- add/edit form -->
   <div id="wish-add-form" style="display:none;background:rgba(255,255,255,.95);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 4px 20px rgba(80,30,120,.2);">
@@ -1096,6 +1097,34 @@ async function toggleEstanteLido(k){
     renderEstante();
   }
 }
+
+function exportWishXLSX(){
+  if(typeof XLSX==='undefined'){alert('SheetJS não carregou.');return;}
+  const wishes=getWishList();
+  if(!wishes.length){alert('A wish list está vazia.');return;}
+  const PRICE_LABEL={'ate5':'até R$ 5','5a10':'R$ 5 a R$ 10','10a25':'R$ 10 a R$ 25',
+    '25a40':'R$ 25 a R$ 40','40a60':'R$ 40 a R$ 60','60a80':'R$ 60 a R$ 80','mais80':'Mais de R$ 80'};
+  // Sheet 1: para enviar ao sebo (sem preço)
+  const sebo=[
+    ['Título','Autor','Tem? (preencher)','Valor (preencher)'],
+    ...wishes.map(w=>[w.titulo||'',w.autor||'','',''])
+  ];
+  // Sheet 2: referência pessoal (com preço)
+  const ref=[
+    ['Título','Autor','Valor disposto a pagar'],
+    ...wishes.map(w=>[w.titulo||'',w.autor||'',PRICE_LABEL[w.price]||w.price||''])
+  ];
+  const wb=XLSX.utils.book_new();
+  const ws1=XLSX.utils.aoa_to_sheet(sebo);
+  const ws2=XLSX.utils.aoa_to_sheet(ref);
+  // column widths
+  ws1['!cols']=[{wch:40},{wch:25},{wch:16},{wch:16}];
+  ws2['!cols']=[{wch:40},{wch:25},{wch:22}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Para o Sebo');
+  XLSX.utils.book_append_sheet(wb,ws2,'Minha Referência');
+  XLSX.writeFile(wb,'wish-list.xlsx');
+}
+
 function saveGoal(v){localStorage.setItem('readingGoal',v);}
 const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const PIE_COLORS=['#c084fc','#818cf8','#34d399','#fbbf24','#f87171','#60a5fa','#a78bfa','#4ade80'];
@@ -1253,7 +1282,11 @@ function importJSON(e){
 function printA4(){
   const urlRow=document.querySelector('.cover-url-row');if(urlRow)urlRow.style.display='none';
   document.querySelectorAll('.add-btn').forEach(b=>b.style.display='none');
+  // expand all textareas so scrollHeight is accurate
+  aeAll();
   const form=document.getElementById('view-form');
+  // use a small delay to let layout settle after expand
+  const doPrint=()=>{
   const scale=Math.min(794/form.scrollWidth,1123/form.scrollHeight);
   let wrapper=document.getElementById('print-wrapper');
   if(!wrapper){wrapper=document.createElement('div');wrapper.id='print-wrapper';document.body.appendChild(wrapper);}
@@ -1266,6 +1299,8 @@ function printA4(){
   wrapper.appendChild(clone);
   window.addEventListener('afterprint',function onAP(){wrapper.innerHTML='';wrapper.style.display='none';if(urlRow)urlRow.style.display='';document.querySelectorAll('.add-btn').forEach(b=>b.style.display='');window.removeEventListener('afterprint',onAP);},{once:true});
   window.print();
+  }; // end doPrint
+  setTimeout(doPrint, 80);
 }
 // ══════════════════════════════════════════════
 // GOOGLE SHEETS INTEGRATION — Fichas Literárias
