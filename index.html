@@ -2,8 +2,16 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fichas de Leitura</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Fichas Literárias</title>
+<meta name="description" content="Catálogo pessoal de leituras">
+<meta name="theme-color" content="#6b35a0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fichas">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -170,7 +178,7 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
 /* ════════════════════════════
    CATALOG VIEW
 ════════════════════════════ */
-#view-catalog{display:none;max-width:1020px;margin:0 auto;}
+#view-estante{display:none;max-width:1020px;margin:0 auto;}
 .cat-header{text-align:center;margin-bottom:20px;}
 .cat-header h2{font-family:'Playfair Display',serif;font-size:28px;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3);margin-bottom:4px;}
 .cat-header p{color:#e0d0f8;font-size:13px;}
@@ -193,6 +201,7 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
 .bc-bubble.on{background:var(--bf);color:#fff;}
 .bc-genre{background:rgba(107,53,160,.15);border-radius:10px;padding:2px 8px;font-size:10px;color:var(--pd);font-weight:700;display:inline-block;margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .bc-date{font-size:10px;color:#8060a8;margin-top:4px;font-style:italic;}
+.bc-nota-num{font-size:13px;font-weight:700;color:var(--pd);margin-left:4px;line-height:1;}
 /* delete X on card */
 .book-card{position:relative;}
 .bc-del-btn{
@@ -219,6 +228,71 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
 /* ════════════════════════════
    PRINT
 ════════════════════════════ */
+
+/* ═══════════════════════════════════
+   RESPONSIVE — Mobile / Tablet
+═══════════════════════════════════ */
+
+/* Tablet landscape ~1024px */
+@media(max-width:1024px){
+  #view-form{padding:16px 14px;}
+  .columns{grid-template-columns:300px 1fr;gap:14px;}
+}
+
+/* Tablet portrait ~768px */
+@media(max-width:768px){
+  body{padding:10px 8px;}
+  #toolbar{gap:5px;}
+  .btn{padding:7px 10px;font-size:11px;}
+  .g-username{display:none;}
+  /* hide form toolbar items on mobile — show only estante */
+  #btn-form{display:none;}
+  /* estante fills screen */
+  #view-estante{padding:0;}
+  .cat-header h2{font-size:20px;}
+  .book-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;}
+  /* hide form completely on small screens — read only */
+  #view-form{display:none!important;}
+}
+
+/* Phone ~480px */
+@media(max-width:480px){
+  body{padding:6px 4px;}
+  #toolbar{
+    flex-wrap:nowrap;overflow-x:auto;
+    padding-bottom:4px;gap:4px;
+    scrollbar-width:none;
+  }
+  #toolbar::-webkit-scrollbar{display:none;}
+  .btn{padding:6px 8px;font-size:10px;white-space:nowrap;flex-shrink:0;}
+  .g-login-btn{padding:5px 8px;font-size:10px;}
+  .g-avatar{width:22px;height:22px;}
+  .book-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;}
+  .bc-title{font-size:10px;}
+  .bc-author{font-size:9px;}
+  .cat-header h2{font-size:18px;}
+  .cat-filters{gap:5px;}
+  .cat-filter-btn{font-size:10px;padding:4px 10px;}
+  /* book card slightly smaller */
+  .bc-info{padding:7px;}
+  /* library panel full width */
+  #library-panel{border-radius:8px;padding:10px;}
+  .lib-item{font-size:11px;}
+  /* trash panel */
+  #trash-panel{border-radius:8px;padding:10px;}
+}
+
+/* Ensure estante is always full width */
+#view-estante{max-width:100%;}
+
+/* Touch-friendly tap targets */
+@media(hover:none){
+  .book-card:hover{transform:none;}
+  .book-card:active{transform:translateY(-3px);box-shadow:0 8px 20px rgba(50,0,100,.3);}
+  .bc-del-btn{opacity:.85!important;} /* always show delete on touch */
+  .cover-overlay{opacity:.7!important;}
+}
+
 @media print{
   @page{size:A4 portrait;margin:0;}
   html,body{margin:0!important;padding:0!important;background:white!important;}
@@ -239,7 +313,7 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
 <!-- ── TOOLBAR ── -->
 <div id="toolbar">
   <button class="btn active" id="btn-form" onclick="switchView('form')">📋 Ficha</button>
-  <button class="btn sec" id="btn-cat" onclick="switchView('catalog')">🎠 Catálogo</button>
+  <button class="btn sec" id="btn-estante" onclick="switchView('estante')">📚 Estante</button>
   <div class="tb-sep"></div>
   <button class="btn" onclick="saveToLib()">💾 Salvar ficha</button>
   <button class="btn sec" onclick="toggleLib()">📚 Fichas salvas</button>
@@ -426,7 +500,7 @@ body{background:#b8a0d8;font-family:'Lato',sans-serif;color:var(--td);padding:20
   <h3>🗑️ Lixeira — fichas excluídas</h3>
   <div id="trash-list"></div>
 </div>
-<div id="view-catalog">
+<div id="view-estante">
   <div class="cat-header">
     <h2>Minha Estante</h2>
     <p id="cat-count">0 livros registrados</p>
@@ -717,7 +791,7 @@ async function saveToLib(){
     _editingKey=d._k; // now we're editing this book
   }
   setLib(lib);renderLib();
-  if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+  if(document.getElementById('view-estante')&&document.getElementById('view-estante').style.display!=='none')renderEstante();
   const st=document.getElementById('save-status');
   st.textContent='✓ "'+title+'" salva!';setTimeout(()=>st.textContent='',3000);
   // Google Sheets sync
@@ -771,7 +845,7 @@ async function moveToTrash(k){
   const trash=getTrash();trash.push(item);setTrash(trash);
   setLib(lib.filter(x=>x._k!==k));
   renderLib();
-  renderCatalog();
+  renderEstante();
   updateTrashBadge();
   const st=document.getElementById('save-status');
   st.textContent='🗑️ Movido para a lixeira';setTimeout(()=>st.textContent='',2500);
@@ -788,7 +862,7 @@ async function restoreFromTrash(k){
   delete item._deletedAt;
   const lib=getLib();lib.push(item);setLib(lib);
   setTrash(trash.filter(x=>x._k!==k));
-  renderTrash();renderLib();renderCatalog();updateTrashBadge();
+  renderTrash();renderLib();renderEstante();updateTrashBadge();
   const st=document.getElementById('save-status');
   st.textContent='✅ "'+item._t+'" restaurada!';setTimeout(()=>st.textContent='',2500);
   // Google Sheets sync
@@ -915,7 +989,7 @@ function importXLSX(e){
         lib.push(book);existingKeys.add(key);added++;
       });
       setLib(lib);renderLib();
-      if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+      if(document.getElementById('view-estante')&&document.getElementById('view-estante').style.display!=='none')renderEstante();
       const msg=`${added} ficha(s) importada(s).${skipped>0?' '+skipped+' duplicata(s) ignorada(s).':''}`+
         (gConnected?' Sincronizando com Google Sheets...':' (faça login para sincronizar)');
       const st=document.getElementById('save-status');
@@ -950,7 +1024,7 @@ function importJSON(e){
         if(!existingKeys.has(key)){lib.push(item);existingKeys.add(key);newBooks.push(item);}
       });
       setLib(lib);renderLib();
-      if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+      if(document.getElementById('view-estante')&&document.getElementById('view-estante').style.display!=='none')renderEstante();
       const st=document.getElementById('save-status');
       st.textContent=newBooks.length+' ficha(s) importada(s)'+(gConnected?' — sincronizando...':'!');
       setTimeout(()=>st.textContent='',4000);
@@ -962,14 +1036,14 @@ function importJSON(e){
 
 // ══ CATALOG VIEW ══
 let catFilter='all';
-function renderCatalog(){
+function renderEstante(){
   const lib=getLib();
   const grid=document.getElementById('book-grid');
   const empty=document.getElementById('cat-empty');
   const count=document.getElementById('cat-count');
   count.textContent=lib.length+' livro'+(lib.length!==1?'s':'')+' registrado'+(lib.length!==1?'s':'');
   // build genre filter
-  buildCatFilters(lib);
+  buildEstanteFilters(lib);
   const filtered=catFilter==='all'?lib:lib.filter(b=>{const g=(b.fields?.['f-genero']||'').toLowerCase();return g.includes(catFilter.toLowerCase());});
   grid.innerHTML='';
   if(!filtered.length){empty.style.display='block';return;}
@@ -994,7 +1068,7 @@ function renderCatalog(){
       <div class="bc-info">
         <div class="bc-title">${book.btitle||book._t||'Sem título'}</div>
         <div class="bc-author">${book.fields?.['f-autor']||''}</div>
-        ${book.nota?`<div class="bc-nota">${bubblesHTML}</div>`:''}
+        ${book.nota?`<div class="bc-nota">${bubblesHTML}<span class="bc-nota-num">${book.nota}</span></div>`:''}
         ${genero?`<div class="bc-genre">${genero}</div>`:''}
         <div class="bc-date">${book._s||''}</div>
       </div>`;
@@ -1007,28 +1081,28 @@ function renderCatalog(){
     grid.appendChild(card);
   });
 }
-function buildCatFilters(lib){
+function buildEstanteFilters(lib){
   const genres=new Set();
   lib.forEach(b=>{
     const g=b.fields?.['f-genero']||'';
     g.split(/[,\n]/).forEach(p=>{const t=p.trim();if(t)genres.add(t.substring(0,25));});
   });
   const fc=document.getElementById('cat-filters');fc.innerHTML='';
-  const all=document.createElement('button');all.className='cat-filter-btn'+(catFilter==='all'?' active':'');all.textContent='Todos';all.onclick=()=>{catFilter='all';renderCatalog();};fc.appendChild(all);
+  const all=document.createElement('button');all.className='cat-filter-btn'+(catFilter==='all'?' active':'');all.textContent='Todos';all.onclick=()=>{catFilter='all';renderEstante();};fc.appendChild(all);
   genres.forEach(g=>{
-    const b=document.createElement('button');b.className='cat-filter-btn'+(catFilter===g?' active':'');b.textContent=g;b.onclick=()=>{catFilter=g;renderCatalog();};fc.appendChild(b);
+    const b=document.createElement('button');b.className='cat-filter-btn'+(catFilter===g?' active':'');b.textContent=g;b.onclick=()=>{catFilter=g;renderEstante();};fc.appendChild(b);
   });
 }
 
 // ══ VIEW SWITCH ══
 function switchView(v){
   document.getElementById('view-form').style.display=v==='form'?'block':'none';
-  document.getElementById('view-catalog').style.display=v==='catalog'?'block':'none';
+  document.getElementById('view-estante').style.display=v==='estante'?'block':'none';
   document.getElementById('btn-form').classList.toggle('active',v==='form');
-  document.getElementById('btn-cat').classList.toggle('active',v==='catalog');
-  document.getElementById('btn-form').classList.toggle('sec',v==='catalog');
-  document.getElementById('btn-cat').classList.toggle('sec',v==='form');
-  if(v==='catalog'){renderCatalog();updateTrashBadge();}
+  document.getElementById('btn-cat').classList.toggle('active',v==='estante');
+  document.getElementById('btn-form').classList.toggle('sec',v==='estante');
+  document.getElementById('btn-estante').classList.toggle('sec',v==='form');
+  if(v==='estante'){renderEstante();updateTrashBadge();}
 }
 
 // ══ PRINT A4 ══
@@ -1418,7 +1492,7 @@ async function gLoadAll(){
     localStorage.setItem('trash',JSON.stringify(trash));
     renderLib();
     updateTrashBadge();
-    if(document.getElementById('view-catalog').style.display!=='none')renderCatalog();
+    if(document.getElementById('view-estante')&&document.getElementById('view-estante').style.display!=='none')renderEstante();
   }catch(e){
     console.error('gLoadAll error:',e);
     gSetSync('⚠️ Erro ao carregar: '+e.message,'err');
@@ -1614,6 +1688,14 @@ window.addEventListener('load',()=>{
   try{const d=localStorage.getItem('draft');if(d)restore(JSON.parse(d));else setTimeout(aeAll,100);}
   catch{setTimeout(aeAll,100);}
 });
+// ── PWA: register service worker ──
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js')
+      .then(()=>console.log('SW registered'))
+      .catch(e=>console.warn('SW:',e));
+  });
+}
 </script>
 </body>
 </html>
