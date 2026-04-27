@@ -1474,7 +1474,6 @@ async function gAfterLogin(){
     gUpdateUI(true);
     await gSetupStorage();
     if(gSharedSsId)setTimeout(()=>gLoadShared().catch(e=>console.warn('shared:',e)),500);
-    if(gSharedSsId)gLoadShared().catch(e=>console.warn('shared load:',e));
   }catch(e){
     console.error(e);
     gSetSync('⚠️ '+e.message,'err');
@@ -1926,13 +1925,40 @@ function saveSharedSettings(){
 function getEstante(){try{return JSON.parse(localStorage.getItem('estante')||'[]');}catch{return[];}}
 function setEstante(l){try{localStorage.setItem('estante',JSON.stringify(l));}catch{}}
 
+async function gEnsureSharedSheets(){
+  // get existing sheets in shared spreadsheet
+  const meta=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}?fields=sheets.properties`);
+  const existing=new Set(meta.sheets.map(s=>s.properties.title));
+  const toCreate=[];
+  if(!existing.has('Estante'))toCreate.push({properties:{title:'Estante'}});
+  if(!existing.has('WishList'))toCreate.push({properties:{title:'WishList'}});
+  if(toCreate.length){
+    await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}:batchUpdate`,{
+      method:'POST',body:JSON.stringify({requests:toCreate.map(s=>({addSheet:s}))})
+    });
+    // write headers
+    if(!existing.has('Estante')){
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A1')}:append?valueInputOption=RAW`,{
+        method:'POST',body:JSON.stringify({values:[['_key','Título','Autor','Ano','Gênero','Páginas','URL Capa','Lido','Data','Nota']]})
+      });
+    }
+    if(!existing.has('WishList')){
+      await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('WishList!A1')}:append?valueInputOption=RAW`,{
+        method:'POST',body:JSON.stringify({values:[['_key','Título','Autor','Faixa de Preço','Data de adição']]})
+      });
+    }
+  }
+}
+
 async function gLoadShared(){
   if(!gConnected||!gSharedSsId)return;
   gSetSync('⏳ Carregando compartilhado...','busy');
   try{
-    // load estante from shared sheet
+    // ensure sheets exist (first time setup)
+    await gEnsureSharedSheets();
+    // load estante
     const re=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A:J')}`);
-    const erows=(re.values||[]).slice(1).filter(row=>row[0]);
+    const erows=(re.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
     const estante=erows.map(row=>({
       _k:parseInt(row[0])||Date.now(),
       btitle:String(row[1]||''),_t:String(row[1]||''),
@@ -1944,9 +1970,9 @@ async function gLoadShared(){
       _s:String(row[8]||''),nota:parseInt(row[9])||null
     }));
     setEstante(estante);
-    // load shared wish list
+    // load wish list
     const rw=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('WishList!A:E')}`);
-    const wrows=(rw.values||[]).slice(1).filter(row=>row[0]);
+    const wrows=(rw.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
     const wishes=wrows.map(row=>({
       _k:parseInt(row[0])||Date.now(),titulo:String(row[1]||''),
       autor:String(row[2]||''),price:String(row[3]||''),_added:String(row[4]||'')
@@ -1956,7 +1982,11 @@ async function gLoadShared(){
     gSetSync('✓ Sincronizado','ok');
   }catch(e){
     console.error('gLoadShared error:',e);
-    gSetSync('⚠️ Erro planilha compartilhada','err');
+    // show friendly message with hint
+    const msg=e.message?.includes('403')?'⚠️ Sem acesso à planilha — verifique o compartilhamento':
+              e.message?.includes('404')?'⚠️ Planilha não encontrada — verifique o link':
+              '⚠️ Erro planilha compartilhada';
+    gSetSync(msg,'err');
   }
 }
 
