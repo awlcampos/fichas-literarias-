@@ -1,5 +1,5 @@
-// Fichas Literárias — Service Worker
-const CACHE = 'fichas-v1';
+// Fichas Literárias — Service Worker v6
+const CACHE = 'fichas-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -28,7 +28,18 @@ self.addEventListener('fetch', e => {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
   }
-  // Everything else: cache first, network fallback
+  // index.html: network first, fallback to cache
+  if(e.request.url.endsWith('/') || e.request.url.includes('index.html')){
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        const clone = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return resp;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+  // Everything else: cache first
   e.respondWith(
     caches.match(e.request).then(cached => {
       if(cached) return cached;
