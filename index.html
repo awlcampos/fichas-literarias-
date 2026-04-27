@@ -380,8 +380,8 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
 <div id="act-bar">
   <span id="save-status"></span>
   <div id="form-actions" style="display:none;gap:3px;align-items:center;">
-    <button class="act-btn primary" onclick="saveToLib()">💾 Salvar ficha</button>
-    <button class="act-btn" onclick="novaFicha()">➕ Nova</button>
+    <button class="act-btn" onclick="fabCloseForm()" style="opacity:.8;">← Voltar</button>
+    <button class="act-btn primary" onclick="saveToLib()">💾 Salvar</button>
     <button class="act-btn" onclick="toggleLib()">📚 Fichas salvas</button>
     <button class="act-btn" onclick="printA4()">🖨️ A4</button>
   </div>
@@ -506,6 +506,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
     <input class="want-search" id="want-search" type="text" placeholder="🔍 Buscar..." oninput="renderWant()" style="margin:0;max-width:280px;">
     <button class="cat-filter-btn" onclick="toggleWishAdd()" style="background:rgba(107,53,160,.5);border-color:rgba(255,255,255,.5);">➕ Adicionar</button>
     <button class="cat-filter-btn" onclick="exportWishXLSX()" style="background:rgba(40,100,60,.5);border-color:rgba(255,255,255,.4);" title="Exportar para enviar a sebos">⬇️ Exportar lista</button>
+    <button class="cat-filter-btn" onclick="toggleWishTrash()" id="wish-trash-btn" style="background:rgba(160,53,53,.3);border-color:rgba(255,255,255,.3);">🗑️ Lixeira</button>
   </div>
   <!-- add/edit form -->
   <div id="wish-add-form" style="display:none;background:rgba(255,255,255,.95);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 4px 20px rgba(80,30,120,.2);">
@@ -533,6 +534,7 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
       <button onclick="saveWishItem()" style="background:var(--pd);color:#fff;border:none;border-radius:8px;padding:5px 14px;font-size:12px;font-family:Lato,sans-serif;font-weight:700;cursor:pointer;">Salvar</button>
     </div>
   </div>
+  <div id="wish-trash-panel" style="background:rgba(255,240,240,.55);border-radius:12px;padding:11px 13px;margin-bottom:11px;display:none;"><h3 style="font-size:12px;color:#a03535;margin-bottom:7px;font-weight:700;">🗑️ Lixeira da Wish List</h3><div id="wish-trash-list"></div></div>
   <div class="want-empty" id="want-empty" style="display:none">Nenhum livro na wish list ainda.<br><small>Clique em ➕ para adicionar.</small></div>
   <div class="want-grid" id="want-grid"></div>
 </div>
@@ -543,14 +545,20 @@ body{background:var(--bg);font-family:'Lato',sans-serif;color:var(--td);
   <div class="estante-header">
     <h2>📖 Catálogo de Fichas</h2>
     <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:2px;">
-      <p id="cat-user-label" style="color:rgba(255,255,255,.72);font-size:13px;margin:0;"></p>
       <button onclick="novaFicha()" title="Nova ficha"
         style="background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4);
         border-radius:20px;padding:3px 11px;font-size:11px;font-family:Lato,sans-serif;
         font-weight:700;cursor:pointer;">➕ Nova ficha</button>
     </div>
   </div>
-  <div class="cat-empty" id="catalogo-empty" style="display:none">Nenhuma ficha ainda.<br><small>Preencha fichas de leitura para vê-las aqui.</small></div>
+  <!-- Shelf selector -->
+  <div style="display:flex;gap:6px;justify-content:center;margin-bottom:12px;" id="catalogo-selector"></div>
+  <!-- Trash panel for catálogo -->
+  <div id="catalogo-trash-panel" style="background:rgba(255,240,240,.55);border-radius:12px;padding:11px 13px;margin-bottom:11px;display:none;">
+    <h3 style="font-size:12px;color:#a03535;margin-bottom:7px;font-weight:700;">🗑️ Lixeira de Fichas</h3>
+    <div id="catalogo-trash-list"></div>
+  </div>
+  <div class="cat-empty" id="catalogo-empty" style="display:none">Nenhuma ficha ainda.<br><small>Clique em ➕ Nova ficha para começar.</small></div>
   <div class="book-grid" id="catalogo-grid"></div>
 </div>
 <!-- FICHA -->
@@ -818,6 +826,7 @@ async function saveToLib(){
   const d=collect();
   if(btitleSnap)d.btitle=btitleSnap; // use snapshot if collect() got empty
   const title=d.btitle||d.fields['f-titulo']||'Sem título';d._t=title;
+  d._owner=gProfile?(gProfile.name||'').split(' ')[0]:'Usuário';
   const lib=getLib();
   if(_editingKey){
     d._k=_editingKey;
@@ -878,8 +887,7 @@ function fabCloseForm(){
     if(!confirm('Fechar sem salvar? O conteúdo será perdido.'))return;
   }
   _editingKey=null;clearForm();
-  // go back to catalogo (natural origin of ficha)
-  switchView('catalogo');
+  switchView(_prevView||'catalogo');
 }
 function toggleLib(){const p=document.getElementById('library-panel');p.style.display=p.style.display==='block'?'none':'block';if(p.style.display==='block')renderLib();}
 function getTrash(){try{return JSON.parse(localStorage.getItem('trash')||'[]');}catch{return[];}}
@@ -910,6 +918,11 @@ function renderTrash(){
 function toggleTrash(){const p=document.getElementById('trash-panel');p.style.display=p.style.display==='block'?'none':'block';if(p.style.display==='block')renderTrash();}
 function updateTrashBadge(){const n=getTrash().length;const btn=document.getElementById('trash-toggle-btn');if(btn)btn.textContent=n>0?'🗑️ Lixeira ('+n+')':'🗑️ Lixeira';}
 let catFilter='all';
+let _prevView='dashboard';
+
+function switchViewBack(){
+  switchView(_prevView||'dashboard');
+}
 function renderEstante(){
   // merge: shared estante books + personal fichas (union by title)
   const estante=getEstante();
@@ -936,10 +949,19 @@ function renderEstante(){
     let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
     const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
     const badges=[];
-    const lido=book._estanteLido===true||!!(book.fields?.['f-registro']?.trim()||book.fields?.['f-resumo']?.trim()||book.nota);
-    const lidoStyle=lido?'background:rgba(80,160,80,.15);color:#2e7d32;border-color:rgba(80,160,80,.4);':'background:rgba(180,180,180,.1);color:#666;border-color:rgba(0,0,0,.15);';
-    const lidoLabel=lido?'✓ Lido':'○ Não lido';
-    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<button onclick="toggleEstanteLido('+book._k+');event.stopPropagation()" style="margin-top:4px;'+lidoStyle+'border:1px solid;border-radius:10px;padding:1px 7px;font-size:9px;font-weight:700;cursor:pointer;width:100%;font-family:Lato,sans-serif;">'+lidoLabel+'</button>'+(book._s?'<div class="bc-date">'+book._s+'</div>':'')+'</div>';
+    // per-user lido avatars
+    const lidoUsersArr=(book._lidoUsers||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const lidoAvatarsArr=(book._lidoAvatars||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const meRead=gProfile&&lidoUsersArr.includes((gProfile.name||'').split(' ')[0]);
+    const lidoBadges=lidoUsersArr.map((u,i)=>{
+      const av=lidoAvatarsArr[i]||'';
+      return av?'<img src="'+av+'" style="width:16px;height:16px;border-radius:50%;border:1.5px solid #fff;margin-right:2px;" title="'+u+' leu">':'<span style="font-size:9px;font-weight:700;color:var(--pd);">'+u+'</span>';
+    }).join('');
+    const lidoHoverBtn='<button class="estante-lido-btn" onclick="toggleEstanteLido('+book._k+');event.stopPropagation()" style="position:absolute;inset:0;display:none;background:rgba(107,53,160,.7);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700;align-items:center;justify-content:center;border-radius:12px;">'+(meRead?'✓ Lido — clique para desmarcar':'Marcar como lido')+'</button>';
+    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+(lidoBadges?'<div style="display:flex;align-items:center;gap:2px;margin-top:3px;flex-wrap:wrap;">'+lidoBadges+'</div>':'')+'<div style="position:relative;margin-top:4px;">'+lidoHoverBtn+'<div class="estante-lido-placeholder" style="height:4px;"></div></div>'+(book._s?'<div class="bc-date">'+book._s+'</div>':'')+'</div>';
+    // show lido button on hover
+    card.addEventListener('mouseenter',()=>{const btn=card.querySelector('.estante-lido-btn');if(btn)btn.style.display='flex';});
+    card.addEventListener('mouseleave',()=>{const btn=card.querySelector('.estante-lido-btn');if(btn)btn.style.display='none';});
     const del=document.createElement('button');del.className='bc-del-btn';del.textContent='✕';
     del.onclick=e=>{e.stopPropagation();moveToTrash(book._k);};card.appendChild(del);
     card.onclick=()=>loadLib(book._k);
@@ -952,6 +974,45 @@ function buildEstanteFilters(lib){
   genres.forEach(g=>{const b=document.createElement('button');b.className='cat-filter-btn'+(catFilter===g?' active':'');b.textContent=g;b.onclick=()=>{catFilter=g;renderEstante();};fc.appendChild(b);});
 }
 // ══ WISH LIST (independent storage) ══
+
+// ══ WISH TRASH ══
+function getWishTrash(){try{return JSON.parse(localStorage.getItem('wish_trash')||'[]');}catch{return[];}}
+function setWishTrash(t){try{localStorage.setItem('wish_trash',JSON.stringify(t));}catch{}}
+
+function moveWishToTrash(k){
+  const wishes=getWishList();const item=wishes.find(x=>x._k===k);if(!item)return;
+  item._deletedAt=new Date().toLocaleDateString('pt-BR');
+  const t=getWishTrash();t.push(item);setWishTrash(t);
+  setWishList(wishes.filter(x=>x._k!==k));renderWant();
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)
+    gDeleteSharedRow('WishList',k).catch(e=>console.error(e));
+}
+function restoreWish(k){
+  const t=getWishTrash();const item=t.find(x=>x._k===k);if(!item)return;
+  delete item._deletedAt;
+  const wishes=getWishList();wishes.push(item);setWishList(wishes);
+  setWishTrash(t.filter(x=>x._k!==k));renderWant();renderWishTrash();
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)
+    gSaveSharedWish(item).catch(e=>console.error(e));
+}
+function deleteWishPerm(k){
+  if(!confirm('Excluir permanentemente?'))return;
+  setWishTrash(getWishTrash().filter(x=>x._k!==k));renderWishTrash();
+}
+function toggleWishTrash(){
+  const p=document.getElementById('wish-trash-panel');
+  p.style.display=p.style.display==='block'?'none':'block';
+  if(p.style.display==='block')renderWishTrash();
+}
+function renderWishTrash(){
+  const t=getWishTrash();const el=document.getElementById('wish-trash-list');if(!el)return;el.innerHTML='';
+  if(!t.length){el.innerHTML='<span style="font-size:11px;color:#a06060;font-style:italic">Lixeira vazia.</span>';return;}
+  t.forEach(item=>{
+    const d=document.createElement('div');d.className='trash-item';
+    d.innerHTML='<span>🛒 '+item.titulo+' <small style="opacity:.7">('+( item._deletedAt||'?')+')</small></span><span class="trash-restore" onclick="restoreWish('+item._k+')" style="cursor:pointer;font-weight:700;text-decoration:underline;">↩️</span><span class="trash-perm" onclick="deleteWishPerm('+item._k+')" style="cursor:pointer;opacity:.6;font-size:12px;">✕</span>';
+    el.appendChild(d);});
+}
+
 const WISH_LABELS={'ate5':'até R$5','5a10':'R$5–10','10a25':'R$10–25','25a40':'R$25–40','40a60':'R$40–60','60a80':'R$60–80','mais80':'+R$80'};
 function getWishList(){try{return JSON.parse(localStorage.getItem('wishlist')||'[]');}catch{return[];}}
 function setWishList(l){try{localStorage.setItem('wishlist',JSON.stringify(l));}catch{}}
@@ -1122,24 +1183,28 @@ function saveToEstante(){
 
 // toggle lido on estante card
 async function toggleEstanteLido(k){
-  const lib=getLib();const idx=lib.findIndex(x=>x._k===k);if(idx<0)return;
-  const wasLido=lib[idx]._estanteLido===true;
-  lib[idx]._estanteLido=!wasLido;setLib(lib);
-  if(!wasLido){
-    // pre-fill ficha
-    const book=lib[idx];
-    _editingKey=null;clearForm();
-    const btEl=document.getElementById('f-btitle');btEl.innerText=book.btitle||'';shrinkTitle();
-    [['f-titulo',book.btitle],['f-autor',book.fields?.['f-autor']],['f-ano-orig',book.fields?.['f-ano-orig']],
-     ['f-genero',book.fields?.['f-genero']],['f-paginas',book.fields?.['f-paginas']]].forEach(([id,val])=>{
-      const el=document.getElementById(id);if(el&&val){el.value=val;ae(el);}});
-    if(book.coverURL){coverURL=book.coverURL;document.getElementById('f-coverurl').value=book.coverURL;setCoverDisplay(book.coverURL);}
-    else if(book.cover){coverB64=book.cover;setCoverDisplay(book.cover);}
-    document.getElementById('f-estante-ref').value=String(k);
-    switchView('form');
+  const estante=getEstante();const idx=estante.findIndex(x=>x._k===k);if(idx<0)return;
+  const book=estante[idx];
+  const userName=gProfile?(gProfile.name||'').split(' ')[0]:'Usuário';
+  const userAvatar=gProfile?.picture||'';
+  // parse current lido users
+  let lidoUsers=(book._lidoUsers||'').split(',').map(x=>x.trim()).filter(Boolean);
+  let lidoAvatars=(book._lidoAvatars||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const alreadyLido=lidoUsers.includes(userName);
+  if(alreadyLido){
+    // remove user
+    const ui=lidoUsers.indexOf(userName);
+    lidoUsers.splice(ui,1);lidoAvatars.splice(ui,1);
   }else{
-    renderEstante();
+    // add user
+    lidoUsers.push(userName);lidoAvatars.push(userAvatar);
   }
+  book._lidoUsers=lidoUsers.join(',');
+  book._lidoAvatars=lidoAvatars.join(',');
+  book._estanteLido=lidoUsers.length>0;
+  estante[idx]=book;setEstante(estante);
+  renderEstante();
+  if(typeof gConnected!=='undefined'&&gConnected&&gSharedSsId)gSaveEstanteBook(book).catch(e=>console.error(e));
 }
 
 function exportWishXLSX(){
@@ -1222,13 +1287,73 @@ function renderDashboard(){
 }
 
 
+// ══ CATÁLOGO TRASH ══
+function getCatTrash(){try{return JSON.parse(localStorage.getItem('cat_trash')||'[]');}catch{return[];}}
+function setCatTrash(t){try{localStorage.setItem('cat_trash',JSON.stringify(t));}catch{}}
+
+function moveFichaToTrash(k){
+  const lib=getLib();const item=lib.find(x=>x._k===k);if(!item)return;
+  item._deletedAt=new Date().toLocaleDateString('pt-BR');
+  const t=getCatTrash();t.push(item);setCatTrash(t);
+  setLib(lib.filter(x=>x._k!==k));renderLib();renderCatalogo();
+  const st=document.getElementById('save-status');
+  st.textContent='🗑️ Ficha movida para lixeira';setTimeout(()=>st.textContent='',2500);
+}
+function restoreFicha(k){
+  const t=getCatTrash();const item=t.find(x=>x._k===k);if(!item)return;
+  delete item._deletedAt;
+  const lib=getLib();lib.push(item);setLib(lib);
+  setCatTrash(t.filter(x=>x._k!==k));renderCatalogo();renderLib();
+}
+function deleteFichaPerm(k){
+  if(!confirm('Excluir permanentemente?'))return;
+  setCatTrash(getCatTrash().filter(x=>x._k!==k));renderCatalogo();
+}
+function toggleCatTrash(){
+  const p=document.getElementById('catalogo-trash-panel');
+  p.style.display=p.style.display==='block'?'none':'block';
+  if(p.style.display==='block')renderCatTrash();
+}
+function renderCatTrash(){
+  const t=getCatTrash();const el=document.getElementById('catalogo-trash-list');el.innerHTML='';
+  if(!t.length){el.innerHTML='<span style="font-size:11px;color:#a06060;font-style:italic">Lixeira vazia.</span>';return;}
+  t.forEach(item=>{
+    const d=document.createElement('div');d.className='trash-item';
+    d.innerHTML='<span>📖 '+item._t+' <small style="opacity:.7">('+( item._deletedAt||'?')+')</small></span><span class="trash-restore" onclick="restoreFicha('+item._k+')" style="cursor:pointer;font-weight:700;text-decoration:underline;">↩️</span><span class="trash-perm" onclick="deleteFichaPerm('+item._k+')" style="cursor:pointer;opacity:.6;font-size:12px;">✕</span>';
+    el.appendChild(d);});
+}
+
+let _catalogoUser = null; // null = current user
+
 function renderCatalogo(){
+  const myName=gProfile?(gProfile.name||'').split(' ')[0]:'Minha';
+  // build selector
+  const sel=document.getElementById('catalogo-selector');sel.innerHTML='';
+  const users=[{key:null,label:'📖 Minhas fichas'}];
+  // detect other user from fichas metadata
   const lib=getLib();
-  const userName=gProfile?(gProfile.name||'').split(' ')[0]:'Usuário';
-  document.getElementById('cat-user-label').textContent='Fichas de '+userName;
-  const fichas=lib.filter(b=>b.fields?.['f-registro']?.trim()||b.fields?.['f-resumo']?.trim()||b.nota);
+  const otherUsers=new Set();
+  lib.forEach(b=>{if(b._owner&&b._owner!==myName)otherUsers.add(b._owner);});
+  otherUsers.forEach(u=>users.push({key:u,label:'📖 Fichas de '+u}));
+  // add trash toggle
+  users.push({key:'trash',label:'🗑️ Lixeira'});
+  users.forEach(u=>{
+    const btn=document.createElement('button');
+    btn.className='cat-filter-btn'+(_catalogoUser===u.key?' active':'');
+    btn.textContent=u.label;
+    btn.onclick=()=>{
+      if(u.key==='trash'){toggleCatTrash();return;}
+      _catalogoUser=u.key;renderCatalogo();
+    };
+    sel.appendChild(btn);
+  });
   const grid=document.getElementById('catalogo-grid');
   const empty=document.getElementById('catalogo-empty');
+  // filter fichas: mine or selected user
+  let fichas=lib.filter(b=>b.fields?.['f-registro']?.trim()||b.fields?.['f-resumo']?.trim()||b.nota);
+  if(_catalogoUser!==null){
+    fichas=fichas.filter(b=>b._owner===_catalogoUser);
+  }
   grid.innerHTML='';
   if(!fichas.length){empty.style.display='block';return;}
   empty.style.display='none';
@@ -1240,7 +1365,14 @@ function renderCatalogo(){
     const phT=(book.btitle||book._t||'').substring(0,30);
     let bbl='';if(book.nota)for(let i=1;i<=10;i++)bbl+='<div class="bc-bubble'+(i===book.nota?' on':'')+'"></div>';
     const gen=(book.fields?.['f-genero']||'').split('\n')[0].split(',')[0].trim();
-    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<div class="bc-date">'+(book._s||'')+'</div></div>';
+    const owner=book._owner||myName;
+    card.innerHTML='<div class="bc-cover">'+cvr+'<div class="bc-cover-ph" '+phStyle+'><span class="bc-cover-ph-icon">📖</span>'+phT+'</div></div><div class="bc-info"><div class="bc-title">'+(book.btitle||book._t||'Sem título')+'</div><div class="bc-author">'+(book.fields?.['f-autor']||'')+'</div>'+(book.nota?'<div class="bc-nota-row">'+bbl+'<span class="bc-nota-num">'+book.nota+'</span></div>':'')+(gen?'<div class="bc-genre">'+gen+'</div>':'')+'<div class="bc-date">'+(book._s||'')+' · '+owner+'</div></div>';
+    // delete X on hover (only own fichas)
+    if(!book._owner||book._owner===myName){
+      const del=document.createElement('button');del.className='bc-del-btn';del.textContent='✕';del.title='Mover para lixeira';
+      del.onclick=e=>{e.stopPropagation();moveFichaToTrash(book._k);};
+      card.appendChild(del);
+    }
     card.onclick=()=>loadLib(book._k);
     grid.appendChild(card);
   });
@@ -1248,6 +1380,8 @@ function renderCatalogo(){
 
 const VIEWS=['dashboard','estante','want','catalogo'];
 function switchView(v){
+  const current=document.querySelector('.view.active')?.id?.replace('view-','');
+  if(current&&current!==v)_prevView=current;
   VIEWS.forEach(id=>{
     const el=document.getElementById('view-'+id);if(el)el.classList.toggle('active',id===v);
     const btn=document.getElementById('btn-'+id);if(btn)btn.classList.toggle('active',id===v);
@@ -1270,7 +1404,6 @@ function switchView(v){
   if(v==='estante'){renderEstante();updateTrashBadge();}
   else if(v==='dashboard')renderDashboard();
   else if(v==='want'){renderWant();closeWishAdd();}
-  else if(v==='catalogo')renderCatalogo();
   else if(v==='catalogo')renderCatalogo();
 }
 function toggleIOMenu(){const m=document.getElementById('io-menu');m.classList.toggle('open');if(m.classList.contains('open'))setTimeout(()=>document.addEventListener('click',_ioOut,{once:true}),0);}
@@ -1956,7 +2089,7 @@ async function gEnsureSharedSheets(){
     // write headers
     if(!existing.has('Estante')){
       await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A1')}:append?valueInputOption=RAW`,{
-        method:'POST',body:JSON.stringify({values:[['_key','Título','Autor','Ano','Gênero','Páginas','URL Capa','Lido','Data','Nota']]})
+        method:'POST',body:JSON.stringify({values:[['_key','Título','Autor','Ano','Gênero','Páginas','URL Capa','Lido','Data','Nota','LidoUsers','LidoAvatars']]})
       });
     }
     if(!existing.has('WishList')){
@@ -1975,7 +2108,7 @@ async function gLoadShared(){
     // ensure sheets exist (first time setup)
     await gEnsureSharedSheets();
     // load estante
-    const re=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A:J')}`);
+    const re=await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A:L')}`);
     const erows=(re.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key');
     const estante=erows.map(row=>({
       _k:parseInt(row[0])||Date.now(),
@@ -1985,7 +2118,9 @@ async function gLoadShared(){
         'f-paginas':String(row[5]||'')},
       coverURL:String(row[6]||''),cover:null,
       _estanteLido:row[7]==='Sim',
-      _s:String(row[8]||''),nota:parseInt(row[9])||null
+      _s:String(row[8]||''),nota:parseInt(row[9])||null,
+      _lidoUsers:String(row[10]||''),  // comma-separated list of user first names who read
+      _lidoAvatars:String(row[11]||'') // comma-separated avatar URLs
     }));
     setEstante(estante);
     // load wish list
@@ -2024,7 +2159,8 @@ async function gSaveEstanteBook(book){
   const row=[String(book._k),book.btitle||'',book.fields?.['f-autor']||'',
     book.fields?.['f-ano-orig']||'',book.fields?.['f-genero']||'',
     book.fields?.['f-paginas']||'',book.coverURL||'',
-    book._estanteLido?'Sim':'Não',book._s||'',String(book.nota||'')];
+    book._estanteLido?'Sim':'Não',book._s||'',String(book.nota||''),
+    book._lidoUsers||'',book._lidoAvatars||''];
   const existingRow=await gFindRowInSheet(gSharedSsId,'Estante',book._k);
   if(existingRow){
     await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${gSharedSsId}/values/${encodeURIComponent('Estante!A'+existingRow+':J'+existingRow)}?valueInputOption=RAW`,
