@@ -1,5 +1,5 @@
 // Fichas Literárias — Service Worker v6
-const CACHE = 'fichas-v6';
+const CACHE = 'cardlit-v1';
 const ASSETS = [
   './',
   './index.html',
