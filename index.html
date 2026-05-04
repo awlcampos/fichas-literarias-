@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Fichas Literárias</title>
+<title>Cardlit</title>
 <meta name="theme-color" content="#6b35a0">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Fichas">
+<meta name="apple-mobile-web-app-title" content="Cardlit">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -1496,12 +1496,60 @@ async function gSetupStorage(){
   await gLoadAll();ssync('✓ Sincronizado','ok');
 }
 function gBookToRow(d){
+  // Column map (A=0 to X=23, 24 total):
+  // 0:_key 1:Título 2:Autor 3:AnoOrig 4:AnoLida 5:Gênero 6:Páginas 7:Formato
+  // 8:DataLeitura 9:Nota 10:Ling 11:Dens 12:Obs 13:Keys 14:PC 15:PS
+  // 16:PO 17:Resumo 18:Registro 19:URLCapa 20:CapaB64 21:Mês/Ano 22:_savedAt 23:_title
   const f=d.fields||{};const fmt=d.fmt?[d.fmt.fisico?'Físico':'',d.fmt.audio?'Audiobook':''].filter(Boolean).join('|')||'':'';
-  return[String(d._k||''),d.btitle||f['f-titulo']||'',f['f-autor']||'',f['f-ano-orig']||'',f['f-ano-lida']||'',f['f-genero']||'',f['f-paginas']||'',fmt,f['f-dataleit']||'',String(d.nota||''),d.ling||'',d.dens||'',f['f-obs']||'',(d.keys||[]).filter(Boolean).join(' | '),(d.pc||[]).filter(Boolean).join(' | '),(d.ps||[]).filter(Boolean).join(' | '),f['f-resumo']||'',f['f-registro']||'',d.coverURL||'',d.cover||'',f['f-date']||d._s||'',d._s||'',d._t||''];
+  return[
+    String(d._k||''),                                    // 0
+    d.btitle||f['f-titulo']||'',                          // 1
+    f['f-autor']||'',                                     // 2
+    f['f-ano-orig']||'',                                  // 3
+    f['f-ano-lida']||'',                                  // 4
+    f['f-genero']||'',                                    // 5
+    f['f-paginas']||'',                                   // 6
+    fmt,                                                  // 7
+    f['f-dataleit']||'',                                  // 8
+    String(d.nota||''),                                   // 9
+    d.ling||'',                                           // 10
+    d.dens||'',                                           // 11
+    f['f-obs']||'',                                       // 12
+    (d.keys||[]).filter(Boolean).join(' | '),             // 13
+    (d.pc||[]).filter(Boolean).join(' | '),               // 14
+    (d.ps||[]).filter(Boolean).join(' | '),               // 15
+    (d.po||[]).filter(Boolean).join(' | '),               // 16 ← was missing!
+    f['f-resumo']||'',                                    // 17
+    f['f-registro']||'',                                  // 18
+    d.coverURL||'',                                       // 19
+    d.cover||'',                                          // 20
+    f['f-date']||d._s||'',                               // 21
+    d._s||'',                                             // 22
+    d._t||''                                              // 23
+  ];
 }
 function gRowToBook(row){
+  // Reads back using same column map as gBookToRow
   const g=i=>String(row[i]||'').trim();const split=v=>v?v.split('|').map(x=>x.trim()).filter(Boolean):[];const fmt=g(7);
-  return{v:6,_k:parseInt(g(0))||Date.now(),_t:g(1)||'Sem título',_s:g(21)||g(20)||'',btitle:g(1),fields:{'f-titulo':g(1),'f-autor':g(2),'f-ano-orig':g(3),'f-ano-lida':g(4),'f-genero':g(5),'f-paginas':g(6),'f-dataleit':g(8),'f-obs':g(12),'f-resumo':g(16),'f-registro':g(17),'f-date':g(20)},fmt:{fisico:fmt.toLowerCase().includes('físico'),audio:fmt.toLowerCase().includes('audiobook')},nota:parseInt(g(9))||null,ling:g(10)||null,dens:g(11)||null,keys:split(g(13)),pc:split(g(14)),ps:split(g(15)),po:split(g(16)),coverURL:g(18),cover:g(19)||null};
+  return{v:6,
+    _k:parseInt(g(0))||Date.now(),
+    _t:g(23)||g(1)||'Sem título',
+    _s:g(22)||g(21)||'',
+    btitle:g(1),
+    fields:{
+      'f-titulo':g(1),'f-autor':g(2),'f-ano-orig':g(3),'f-ano-lida':g(4),
+      'f-genero':g(5),'f-paginas':g(6),'f-dataleit':g(8),'f-obs':g(12),
+      'f-resumo':g(17),   // 17 = Resumo
+      'f-registro':g(18), // 18 = Registro
+      'f-date':g(21)      // 21 = Mês/Ano
+    },
+    fmt:{fisico:fmt.toLowerCase().includes('físico'),audio:fmt.toLowerCase().includes('audiobook')},
+    nota:parseInt(g(9))||null,ling:g(10)||null,dens:g(11)||null,
+    keys:split(g(13)),pc:split(g(14)),ps:split(g(15)),
+    po:split(g(16)),      // 16 = Outros Pers.
+    coverURL:g(19),       // 19 = URL Capa
+    cover:g(20)||null     // 20 = Capa Base64
+  };
 }
 async function gFindRow(sheetName,key){
   const r=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(sheetName+'!A:A'));
@@ -1519,14 +1567,14 @@ async function gSaveBook(d){
     try{const url=await gUploadCover(d.cover,d.btitle);if(url){d.coverURL=url;d.cover=null;const lib=getLib();const idx=lib.findIndex(x=>x._k===d._k);if(idx>=0){lib[idx].coverURL=url;lib[idx].cover=null;setLib(lib);}}}catch(e){console.warn('Cover upload:',e);}
   }
   const row=gBookToRow(d);const existing=await gFindRow(G_SHEET_F,d._k);
-  if(existing){await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A'+existing+':W'+existing)+'?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:[row]})});}
-  else{await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:W')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});}
+  if(existing){await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A'+existing+':X'+existing)+'?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:[row]})});}
+  else{await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:X')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});}
 }
 async function gMoveToTrashSheet(d){
   if(!gConnected||!gSsId)return;
   await gDeleteRow(G_SHEET_F,d._k);
   const row=gBookToRow(d);row[21]=d._deletedAt||new Date().toLocaleDateString('pt-BR');
-  await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:W')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});
+  await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:X')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});
 }
 async function gRestoreFromTrashSheet(d){if(!gConnected||!gSsId)return;await gDeleteRow(G_SHEET_T,d._k);await gSaveBook(d);}
 async function gSaveWishBook(w){
@@ -1562,11 +1610,11 @@ async function gLoadAll(){
   if(!gConnected||!gSsId)return;
   try{
     // fichas
-    const r=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:W'));
+    const r=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:X'));
     const lib=(r.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key').map(gRowToBook);
     setLib(lib);
     // lixeira
-    const rt=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:W'));
+    const rt=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:X'));
     const trash=(rt.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key').map(r=>{const b=gRowToBook(r);b._deletedAt=String(r[21]||'');return b;});
     setTrash(trash);
     // wish list
@@ -1612,7 +1660,7 @@ function gTryRestoreSession(){
 
 // ══ INIT ══
 window.addEventListener('load',()=>{
-  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   go('dashboard');
   try{const d=localStorage.getItem('draft');if(d)restore(JSON.parse(d));}catch(e){}
   setTimeout(aeAll,100);
