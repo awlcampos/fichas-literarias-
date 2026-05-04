@@ -1,31 +1,17 @@
 {
-  "name": "Fichas Literárias",
-  "short_name": "Fichas",
-  "description": "Catálogo pessoal de leituras da Daianna",
-  "start_url": "/fichas-literarias/",
-  "scope": "/fichas-literarias/",
+  "name": "Cardlit",
+  "short_name": "Cardlit",
+  "description": "Catálogo pessoal de leituras",
+  "start_url": "/cardlit/",
+  "scope": "/cardlit/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#b8a0d8",
   "theme_color": "#6b35a0",
   "lang": "pt-BR",
   "icons": [
-    {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icons/icon-180.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    }
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icons/icon-180.png", "sizes": "180x180", "type": "image/png"}
   ]
 }
