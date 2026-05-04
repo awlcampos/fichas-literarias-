@@ -158,6 +158,14 @@ body{background:var(--bg);font-family:"Lato",sans-serif;color:var(--td);
 .cat-filter-btn{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.32);
   border-radius:20px;padding:4px 11px;font-size:10px;font-family:"Lato",sans-serif;cursor:pointer;transition:background .2s;}
 .cat-filter-btn:hover,.cat-filter-btn.active{background:var(--pd);border-color:var(--pd);}
+.sort-row{display:flex;gap:5px;justify-content:center;margin-bottom:10px;flex-wrap:wrap;}
+.sort-btn{background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.2);
+  border-radius:20px;padding:3px 10px;font-size:10px;font-family:"Lato",sans-serif;cursor:pointer;transition:background .2s;}
+.sort-btn.active{background:rgba(255,255,255,.35);color:#fff;border-color:rgba(255,255,255,.5);}
+.sort-bar{display:flex;gap:5px;justify-content:center;margin-bottom:10px;flex-wrap:wrap;}
+.sort-btn{background:rgba(255,255,255,.15);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.2);
+  border-radius:20px;padding:3px 10px;font-size:10px;font-family:"Lato",sans-serif;cursor:pointer;transition:background .2s;}
+.sort-btn:hover,.sort-btn.active{background:rgba(255,255,255,.3);color:#fff;}
 .cat-empty{text-align:center;color:rgba(255,255,255,.68);padding:50px 20px;font-size:14px;}
 .book-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px;}
 .book-card{background:rgba(255,255,255,.2);backdrop-filter:blur(6px);border-radius:12px;overflow:visible;
@@ -444,6 +452,13 @@ body{background:var(--bg);font-family:"Lato",sans-serif;color:var(--td);
     <button class="cat-filter-btn" onclick="toggleCatTrash()" id="cat-trash-btn">🗑️ Lixeira</button>
   </div>
   <div class="trash-panel" id="cat-trash-panel"><h3>🗑️ Lixeira de Fichas</h3><div class="trash-list" id="cat-trash-list"></div></div>
+  <div class="sort-bar" id="cat-sort-bar">
+    <span style="font-size:10px;color:rgba(255,255,255,.6);padding-top:3px;">Ordenar:</span>
+    <button class="sort-btn active" id="csort-date" onclick="setCatSort('date')">📅 Data</button>
+    <button class="sort-btn" id="csort-title" onclick="setCatSort('title')">🔤 Título</button>
+    <button class="sort-btn" id="csort-nota" onclick="setCatSort('nota')">⭐ Nota</button>
+  </div>
+  <div class="sort-row" id="cat-sort-row"></div>
   <div class="cat-filters" id="cat-filters"></div>
   <div class="cat-empty" id="cat-empty" style="display:none">Nenhuma ficha ainda.<br><small>Clique em ➕ Nova ficha para começar.</small></div>
   <div class="book-grid" id="book-grid"></div>
@@ -475,6 +490,13 @@ body{background:var(--bg);font-family:"Lato",sans-serif;color:var(--td);
       <button onclick="saveEstante()" class="add-form-btn primary">Adicionar</button>
     </div>
   </div>
+  <div class="sort-bar">
+    <span style="font-size:10px;color:rgba(255,255,255,.6);padding-top:3px;">Ordenar:</span>
+    <button class="sort-btn active" id="esort-date" onclick="setEstSort('date')">📅 Data</button>
+    <button class="sort-btn" id="esort-title" onclick="setEstSort('title')">🔤 Título</button>
+    <button class="sort-btn" id="esort-lido" onclick="setEstSort('lido')">✓ Lido</button>
+  </div>
+  <div class="sort-row" id="est-sort-row"></div>
   <div class="cat-empty" id="est-empty" style="display:none">Nenhum livro na estante ainda.<br><small>Clique em ➕ para adicionar.</small></div>
   <div class="book-grid" id="est-grid"></div>
 </div>
@@ -509,6 +531,13 @@ body{background:var(--bg);font-family:"Lato",sans-serif;color:var(--td);
       <button onclick="saveWish()" class="add-form-btn primary">Salvar</button>
     </div>
   </div>
+  <div class="sort-bar">
+    <span style="font-size:10px;color:rgba(255,255,255,.6);padding-top:3px;">Ordenar:</span>
+    <button class="sort-btn active" id="wsort-date" onclick="setWantSort('date')">📅 Data</button>
+    <button class="sort-btn" id="wsort-title" onclick="setWantSort('title')">🔤 Título</button>
+    <button class="sort-btn" id="wsort-price" onclick="setWantSort('price')">💰 Valor</button>
+  </div>
+  <div class="sort-row" id="want-sort-row"></div>
   <div class="want-empty" id="want-empty" style="display:none">Nenhum livro na wish list ainda.</div>
   <div class="want-grid" id="want-grid"></div>
 </div>
@@ -567,12 +596,12 @@ body{background:var(--bg);font-family:"Lato",sans-serif;color:var(--td);
         <div class="rlbl" style="margin-top:4px">Obs:</div>
         <textarea class="ata ata-shrink" id="f-obs" rows="1" placeholder="Observações..." oninput="shrinkObs(this);draft()"></textarea>
       </div>
+    </div>
+    <div class="right-col">
       <div class="section">
         <div class="sec-hdr">Resumo Objetivo</div>
         <textarea class="bta" id="f-resumo" rows="4" placeholder="Resumo objetivo do livro..." oninput="ae(this);draft()"></textarea>
       </div>
-    </div>
-    <div class="right-col">
       <div class="section">
         <div class="sec-hdr">Elementos Chave</div>
         <ul class="key-list" id="key-list">
@@ -731,7 +760,7 @@ function collect(){
     keys:cl('#key-list .kta'),pc:cl('#p-central .pta'),ps:cl('#p-sec .pta'),po:cl('#p-outros .pta')};
 }
 function gv(gid){const s=document.querySelector('#'+gid+' .oitem.on');return s?s.dataset.v:null;}
-function cl(sel){return Array.from(document.querySelectorAll(sel)).map(x=>x.value);}
+function cl(sel){return Array.from(document.querySelectorAll(sel)).map(x=>x.value).filter(v=>v&&v.trim());}
 function restore(d){
   if(!d)return;
   if(d.fields)Object.entries(d.fields).forEach(([id,val])=>{const el=document.getElementById(id);if(el)el.value=val;});
@@ -745,27 +774,41 @@ function restore(d){
   row.querySelectorAll('.nbbl').forEach(b=>b.classList.toggle('on',+b.dataset.v===notaVal));
   row.classList.toggle('has-sel',notaVal!==null);
   sv('g-ling',d.ling);sv('g-dens',d.dens);
-  rl('key-list','kta',d.keys||[],'li',3);rl('p-central','pta',d.pc||[],'div',3);
-  rl('p-sec','pta',d.ps||[],'div',3);rl('p-outros','pta',d.po||[],'div',2);
+  rl('key-list','kta',d.keys||[],'li');rl('p-central','pta',d.pc||[],'div');
+  rl('p-sec','pta',d.ps||[],'div');rl('p-outros','pta',d.po||[],'div');
   setTimeout(()=>{aeAll();shrinkTitle();const o=document.getElementById('f-obs');if(o)shrinkObs(o);},80);
 }
 function sv(gid,val){document.querySelectorAll('#'+gid+' .oitem').forEach(x=>x.classList.toggle('on',x.dataset.v===val));}
-function mkTa(cls,ph){const ta=document.createElement('textarea');ta.className=cls;ta.rows=1;ta.placeholder=ph;ta.oninput=function(){ae(this);draft();};return ta;}
-function rl(cid,cls,vals,tag,minRows){
-  const c=document.getElementById(cid);c.innerHTML='';const n=Math.max(vals.length,minRows);
-  for(let i=0;i<n;i++){const w=document.createElement(tag);if(tag==='div')w.className='pitem';
-    const ta=mkTa(cls,cls==='kta'?'Elemento chave...':'Nome – descrição breve');ta.value=vals[i]||'';w.appendChild(ta);c.appendChild(w);}
+function mkTa(cls,ph,cid,tag){
+  const ta=document.createElement('textarea');ta.className=cls;ta.rows=1;ta.placeholder=ph;
+  ta.oninput=function(){ae(this);draft();if(cid&&tag)autoGrowRows(cid,cls,ph,tag);};
+  return ta;
 }
-function addKey(){const li=document.createElement('li');li.appendChild(mkTa('kta','Elemento chave...'));document.getElementById('key-list').appendChild(li);li.querySelector('textarea').focus();}
-function addPers(cid){const d=document.createElement('div');d.className='pitem';d.appendChild(mkTa('pta','Nome – descrição breve'));document.getElementById(cid).appendChild(d);d.querySelector('textarea').focus();}
-
-// ══ DRAFT AUTO-SAVE ══
-let _draftTimer=null;
-function draft(){
-  clearTimeout(_draftTimer);
-  _draftTimer=setTimeout(()=>{
-    try{localStorage.setItem('draft',JSON.stringify(collect()));ssync('Rascunho salvo','draft');}catch(e){}
-  },500);
+function autoGrowRows(cid,cls,ph,tag){
+  const c=document.getElementById(cid);if(!c)return;
+  const items=[...c.querySelectorAll('textarea.'+cls.split(' ')[0])];
+  let emptyAtEnd=0;
+  for(let i=items.length-1;i>=0;i--){if(!items[i].value.trim())emptyAtEnd++;else break;}
+  if(emptyAtEnd===0){
+    const w=document.createElement(tag);if(tag==='div')w.className='pitem';
+    w.appendChild(mkTa(cls,ph,cid,tag));c.appendChild(w);
+  } else if(emptyAtEnd>1){
+    let toRemove=emptyAtEnd-1;
+    const rows=[...c.querySelectorAll(tag==='li'?'li':'div.pitem')];
+    for(let i=rows.length-1;i>=0&&toRemove>0;i--){
+      const ta=rows[i].querySelector('textarea');
+      if(ta&&!ta.value.trim()){rows[i].remove();toRemove--;}
+    }
+  }
+}
+function addKey(){const li=document.createElement('li');li.appendChild(mkTa('kta','Elemento chave...','key-list','li'));document.getElementById('key-list').appendChild(li);li.querySelector('textarea').focus();}
+function addPers(cid){const d=document.createElement('div');d.className='pitem';d.appendChild(mkTa('pta','Nome – descrição breve',cid,'div'));document.getElementById(cid).appendChild(d);d.querySelector('textarea').focus();}
+function rl(cid,cls,vals,tag){
+  const c=document.getElementById(cid);if(!c)return;c.innerHTML='';
+  const ph=cls.includes('kta')?'Elemento chave...':'Nome – descrição breve';
+  const filled=(vals||[]).filter(v=>v&&v.trim());
+  [...filled,''].forEach(v=>{const w=document.createElement(tag);if(tag==='div')w.className='pitem';
+    const ta=mkTa(cls,ph,cid,tag);ta.value=v;w.appendChild(ta);c.appendChild(w);});
 }
 
 // ══ LIBRARY (fichas) ══
@@ -778,8 +821,8 @@ async function saveToLib(){
   const btEl=document.getElementById('f-btitle');
   const btSnap=(btEl.innerText||btEl.textContent||'').trim();
   const d=collect();if(btSnap)d.btitle=btSnap;
-  const title=d.btitle||d.fields['f-titulo']||'Sem título';
-  d._t=title;
+  const title=(d.btitle||d.fields['f-titulo']||'Sem título').toUpperCase();
+  d.btitle=title;d.fields['f-titulo']=title;d._t=title;
   const lib=getLib();
   if(_editingKey){
     d._k=_editingKey;
@@ -818,7 +861,10 @@ function clearForm(){
   ['fmt-fisico','fmt-audio'].forEach(id=>document.getElementById(id).classList.remove('on'));
   document.querySelectorAll('.nbbl,.oitem').forEach(x=>x.classList.remove('on'));
   document.getElementById('nota-row').classList.remove('has-sel');
-  rl('key-list','kta',[],'li',3);rl('p-central','pta',[],'div',3);rl('p-sec','pta',[],'div',3);rl('p-outros','pta',[],'div',2);
+  rl('key-list','kta',[],'li');rl('p-central','pta',[],'div');rl('p-sec','pta',[],'div');rl('p-outros','pta',[],'div');
+  // restore last used date
+  const lastDate=localStorage.getItem('lastDate')||'';
+  const dateEl=document.getElementById('f-date');if(dateEl)dateEl.value=lastDate;
   setTimeout(()=>{aeAll();shrinkTitle();},80);
 }
 
@@ -842,6 +888,62 @@ function closeForm(){
   _editingKey=null;clearForm();go(_prevView||'catalogo');
 }
 
+
+// ══ SORT ══
+const _sort={catalogo:'date-desc',estante:'date-desc',want:'title-asc'};
+
+function buildSortRow(containerId,view,opts){
+  const row=document.getElementById(containerId);if(!row)return;
+  row.innerHTML='<span style="color:rgba(255,255,255,.6);font-size:10px;margin-right:2px;">Ordenar:</span>';
+  opts.forEach(({key,label})=>{
+    const b=document.createElement('button');b.className='sort-btn'+(_sort[view]===key?' active':'');
+    b.textContent=label;
+    b.onclick=()=>{
+      if(_sort[view]===key){
+        // toggle asc/desc
+        _sort[view]=key.endsWith('-asc')?key.replace('-asc','-desc'):key.replace('-desc','-asc');
+      }else _sort[view]=key;
+      if(view==='catalogo')renderCatalogo();
+      else if(view==='estante')renderEstante();
+      else if(view==='want')renderWant();
+    };
+    row.appendChild(b);
+  });
+}
+
+function sortBooks(arr,view){
+  const s=_sort[view]||'date-desc';
+  return [...arr].sort((a,b)=>{
+    if(s==='date-desc'||s==='date-asc'){
+      const da=parseDate(a._s||''),db=parseDate(b._s||'');
+      return s==='date-desc'?db-da:da-db;
+    }
+    if(s==='title-asc'||s==='title-desc'){
+      const ta=(a.btitle||a.titulo||a._t||'').toLowerCase();
+      const tb=(b.btitle||b.titulo||b._t||'').toLowerCase();
+      return s==='title-asc'?ta.localeCompare(tb):tb.localeCompare(ta);
+    }
+    return 0;
+  });
+}
+
+function sortWish(arr){
+  const s=_sort['want'];
+  const priceOrder={'ate5':1,'5a10':2,'10a25':3,'25a40':4,'40a60':5,'60a80':6,'mais80':7,'':99};
+  return [...arr].sort((a,b)=>{
+    if(s==='title-asc')return(a.titulo||'').localeCompare(b.titulo||'');
+    if(s==='title-desc')return(b.titulo||'').localeCompare(a.titulo||'');
+    if(s==='price-asc')return(priceOrder[a.price||'']||99)-(priceOrder[b.price||'']||99);
+    if(s==='price-desc')return(priceOrder[b.price||'']||99)-(priceOrder[a.price||'']||99);
+    return 0;
+  });
+}
+
+function parseDate(s){
+  const m=s.match(/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[2],+m[1]-1,1).getTime();
+  return 0;
+}
+
 // ══ CATÁLOGO ══
 let catFilter='all';
 function renderCatalogo(){
@@ -849,7 +951,8 @@ function renderCatalogo(){
   const el=document.getElementById('cat-subtitle');
   if(el)el.textContent=lib.length+' ficha'+(lib.length!==1?'s':'');
   buildFilters(lib);
-  const filtered=catFilter==='all'?lib:lib.filter(b=>(b.fields?.['f-genero']||'').toLowerCase().includes(catFilter.toLowerCase()));
+  const base=catFilter==='all'?lib:lib.filter(b=>(b.fields?.['f-genero']||'').toLowerCase().includes(catFilter));
+  const filtered=sortLib(base);
   const grid=document.getElementById('book-grid'),empty=document.getElementById('cat-empty');
   grid.innerHTML='';
   if(!filtered.length){empty.style.display='block';return;}
@@ -857,10 +960,22 @@ function renderCatalogo(){
   filtered.forEach(book=>grid.appendChild(makeCard(book,'catalogo')));
 }
 function buildFilters(lib){
-  const genres=new Set();lib.forEach(b=>(b.fields?.['f-genero']||'').split(/[,\n]/).forEach(g=>{const t=g.trim();if(t)genres.add(t.substring(0,20));}));
+  // normalize genres: lowercase key, display as-is from first occurrence
+  const genreMap={};
+  lib.forEach(b=>(b.fields?.['f-genero']||'').split(/[,\n]/).forEach(g=>{
+    const t=g.trim();if(!t)return;
+    const key=t.toLowerCase().substring(0,20);
+    if(!genreMap[key])genreMap[key]=t.substring(0,20);
+  }));
   const fc=document.getElementById('cat-filters');fc.innerHTML='';
   const all=document.createElement('button');all.className='cat-filter-btn'+(catFilter==='all'?' active':'');all.textContent='Todos';all.onclick=()=>{catFilter='all';renderCatalogo();};fc.appendChild(all);
-  genres.forEach(g=>{const b=document.createElement('button');b.className='cat-filter-btn'+(catFilter===g?' active':'');b.textContent=g;b.onclick=()=>{catFilter=g;renderCatalogo();};fc.appendChild(b);});
+  Object.entries(genreMap).forEach(([key,label])=>{
+    const b=document.createElement('button');
+    b.className='cat-filter-btn'+(catFilter===key?' active':'');
+    b.textContent=label;
+    b.onclick=()=>{catFilter=key;renderCatalogo();};
+    fc.appendChild(b);
+  });
 }
 function makeCard(book,origin){
   const card=document.createElement('div');card.className='book-card';
@@ -919,9 +1034,10 @@ function renderEstante(){
   const el=document.getElementById('est-subtitle');if(el)el.textContent=est.length+' livro'+(est.length!==1?'s':'');
   const grid=document.getElementById('est-grid'),empty=document.getElementById('est-empty');
   grid.innerHTML='';
-  if(!est.length){empty.style.display='block';return;}
+  const estSorted=sortEst(est);
+  if(!estSorted.length){empty.style.display='block';return;}
   empty.style.display='none';
-  est.forEach(book=>{
+  estSorted.forEach(book=>{
     const card=document.createElement('div');card.className='book-card';
     const src=book.coverURL||book.cover||'';
     const cvr=src?'<img src="'+src+'" alt="" onerror="this.style.display=\'none\';this.parentElement.querySelector(\'.bc-cover-ph\').style.display=\'flex\'">':'';
@@ -971,11 +1087,11 @@ async function fetchEstISBN(){
 }
 
 async function saveEstante(){
-  const titulo=(document.getElementById('est-titulo').value||'').trim();
+  const titulo=(document.getElementById('est-titulo').value||'').trim().toUpperCase();
   if(!titulo){alert('Título é obrigatório.');return;}
   const est=getEstante();
   if(est.some(b=>(b.titulo||'').toLowerCase()===titulo.toLowerCase())){alert('"'+titulo+'" já está na estante.');return;}
-  const book={_k:Date.now(),titulo,autor:document.getElementById('est-autor').value.trim(),
+  const book={_k:Date.now(),titulo:titulo.toUpperCase(),autor:document.getElementById('est-autor').value.trim(),
     ano:document.getElementById('est-ano').value.trim(),genero:document.getElementById('est-genero').value.trim(),
     paginas:document.getElementById('est-paginas').value.trim(),coverURL:document.getElementById('est-capa').value.trim(),
     lido:false,_s:new Date().toLocaleDateString('pt-BR')};
@@ -1017,7 +1133,7 @@ const WISH_LBL={'ate5':'até R$5','5a10':'R$5–10','10a25':'R$10–25','25a40':
 
 function renderWant(){
   const q=(document.getElementById('want-search').value||'').toLowerCase();
-  const wishes=getWish().filter(w=>!q||(w.titulo||'').toLowerCase().includes(q)||(w.autor||'').toLowerCase().includes(q));
+  const wishes=sortWant(getWish().filter(w=>!q||(w.titulo||'').toLowerCase().includes(q)||(w.autor||'').toLowerCase().includes(q)));
   const grid=document.getElementById('want-grid'),empty=document.getElementById('want-empty');
   grid.innerHTML='';
   if(!wishes.length){empty.style.display='block';return;}empty.style.display='none';
@@ -1037,16 +1153,16 @@ function toggleWishAdd(){
 }
 function closeWishAdd(){document.getElementById('wish-add-form').style.display='none';}
 async function saveWish(){
-  const titulo=(document.getElementById('wish-titulo').value||'').trim();
+  const titulo=(document.getElementById('wish-titulo').value||'').trim().toUpperCase();
   if(!titulo){alert('Título é obrigatório.');return;}
   const editKey=parseInt(document.getElementById('wish-edit-key').value)||null;
   const wishes=getWish();
   let saved;
   if(editKey){
     const idx=wishes.findIndex(x=>x._k===editKey);
-    if(idx>=0){wishes[idx].titulo=titulo;wishes[idx].autor=document.getElementById('wish-autor').value.trim();wishes[idx].price=document.getElementById('wish-price').value;saved=wishes[idx];}
+    if(idx>=0){wishes[idx].titulo=titulo.toUpperCase();wishes[idx].autor=document.getElementById('wish-autor').value.trim();wishes[idx].price=document.getElementById('wish-price').value;saved=wishes[idx];}
   }else{
-    saved={_k:Date.now(),titulo,autor:document.getElementById('wish-autor').value.trim(),price:document.getElementById('wish-price').value,_added:new Date().toLocaleDateString('pt-BR')};
+    saved={_k:Date.now(),titulo:titulo.toUpperCase(),autor:document.getElementById('wish-autor').value.trim(),price:document.getElementById('wish-price').value,_added:new Date().toLocaleDateString('pt-BR')};
     wishes.push(saved);
   }
   setWish(wishes);closeWishAdd();renderWant();
@@ -1144,6 +1260,49 @@ function renderDashboard(){
   document.getElementById('nota10-grid').innerHTML=nota10.map(b=>{const src=b.cover||b.coverURL||'';return'<div class="nota10-card" onclick="loadLib('+b._k+')"><div class="nota10-cover">'+(src?'<img src="'+src+'" alt="">':'<div class="nota10-cover-ph">📖</div>')+'</div><div class="nota10-title-txt">'+(b.btitle||b._t||'')+'</div></div>';}).join('')||'<span style="color:rgba(255,255,255,.6);font-size:12px">Nenhuma nota 10 ainda.</span>';
   const recent=[...lib].reverse().slice(0,3);
   document.getElementById('recent-list').innerHTML=recent.map(b=>{const src=b.cover||b.coverURL||'';return'<div class="recent-item" onclick="loadLib('+b._k+')"><div class="recent-cover">'+(src?'<img src="'+src+'" alt="">':'📖')+'</div><div class="recent-info"><div class="recent-book-title">'+(b.btitle||b._t||'')+'</div><div class="recent-author">'+(b.fields?.['f-autor']||'')+'</div><div class="recent-author">'+(b._s||'')+'</div></div>'+(b.nota?'<div class="recent-nota">'+b.nota+'</div>':'')+'</div>';}).join('')||'<span style="color:rgba(255,255,255,.6);font-size:12px">Nenhuma ficha ainda.</span>';
+}
+
+
+// ══ SORT STATE ══
+let catSort='date', estSort='date', wantSort='date';
+const PRICE_ORDER={'ate5':1,'5a10':2,'10a25':3,'25a40':4,'40a60':5,'60a80':6,'mais80':7};
+
+function setCatSort(s){
+  catSort=s;
+  ['date','title','nota'].forEach(k=>{const b=document.getElementById('csort-'+k);if(b)b.classList.toggle('active',k===s);});
+  renderCatalogo();
+}
+function setEstSort(s){
+  estSort=s;
+  ['date','title','lido'].forEach(k=>{const b=document.getElementById('esort-'+k);if(b)b.classList.toggle('active',k===s);});
+  renderEstante();
+}
+function setWantSort(s){
+  wantSort=s;
+  ['date','title','price'].forEach(k=>{const b=document.getElementById('wsort-'+k);if(b)b.classList.toggle('active',k===s);});
+  renderWant();
+}
+function sortLib(arr){
+  return [...arr].sort((a,b)=>{
+    if(catSort==='title')return(a.btitle||a._t||'').localeCompare(b.btitle||b._t||'','pt');
+    if(catSort==='nota')return(b.nota||0)-(a.nota||0);
+    // date: newest first
+    const da=a._s||'',db=b._s||'';return db.localeCompare(da);
+  });
+}
+function sortEst(arr){
+  return [...arr].sort((a,b)=>{
+    if(estSort==='title')return(a.titulo||'').localeCompare(b.titulo||'','pt');
+    if(estSort==='lido')return(b.lido?1:0)-(a.lido?1:0);
+    return(b._s||'').localeCompare(a._s||'');
+  });
+}
+function sortWant(arr){
+  return [...arr].sort((a,b)=>{
+    if(wantSort==='title')return(a.titulo||'').localeCompare(b.titulo||'','pt');
+    if(wantSort==='price')return(PRICE_ORDER[a.price]||99)-(PRICE_ORDER[b.price]||99);
+    return(b._added||'').localeCompare(a._added||'');
+  });
 }
 
 // ══ VIEW NAVIGATION ══
@@ -1354,14 +1513,14 @@ async function gSaveBook(d){
     try{const url=await gUploadCover(d.cover,d.btitle);if(url){d.coverURL=url;d.cover=null;const lib=getLib();const idx=lib.findIndex(x=>x._k===d._k);if(idx>=0){lib[idx].coverURL=url;lib[idx].cover=null;setLib(lib);}}}catch(e){console.warn('Cover upload:',e);}
   }
   const row=gBookToRow(d);const existing=await gFindRow(G_SHEET_F,d._k);
-  if(existing){await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A'+existing+':X'+existing)+'?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:[row]})});}
-  else{await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:X')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});}
+  if(existing){await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A'+existing+':W'+existing)+'?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:[row]})});}
+  else{await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:W')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});}
 }
 async function gMoveToTrashSheet(d){
   if(!gConnected||!gSsId)return;
   await gDeleteRow(G_SHEET_F,d._k);
   const row=gBookToRow(d);row[21]=d._deletedAt||new Date().toLocaleDateString('pt-BR');
-  await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:X')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});
+  await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:W')+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:[row]})});
 }
 async function gRestoreFromTrashSheet(d){if(!gConnected||!gSsId)return;await gDeleteRow(G_SHEET_T,d._k);await gSaveBook(d);}
 async function gSaveWishBook(w){
@@ -1397,11 +1556,11 @@ async function gLoadAll(){
   if(!gConnected||!gSsId)return;
   try{
     // fichas
-    const r=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:X'));
+    const r=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_F+'!A:W'));
     const lib=(r.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key').map(gRowToBook);
     setLib(lib);
     // lixeira
-    const rt=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:X'));
+    const rt=await gApi('https://sheets.googleapis.com/v4/spreadsheets/'+gSsId+'/values/'+encodeURIComponent(G_SHEET_T+'!A:W'));
     const trash=(rt.values||[]).slice(1).filter(row=>row[0]&&row[0]!=='_key').map(r=>{const b=gRowToBook(r);b._deletedAt=String(r[21]||'');return b;});
     setTrash(trash);
     // wish list
@@ -1421,13 +1580,27 @@ async function gLoadAll(){
 function gTryRestoreSession(){
   const tok=localStorage.getItem('g_token');const exp=parseInt(localStorage.getItem('g_token_exp')||'0');
   if(!tok)return;
-  const cached=localStorage.getItem('g_profile');if(cached)try{gProfile=JSON.parse(cached);}catch(e){}
+  const cached=localStorage.getItem('g_profile');
+  if(cached)try{gProfile=JSON.parse(cached);}catch(e){}
+  if(gProfile)gUpdateUI(true); // show UI immediately from cache
   if(exp>Date.now()){
-    gToken=tok;if(gProfile)gUpdateUI(true);ssync('⏳ Reconectando...','busy');
-    gSetupStorage().catch(e=>{localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');gToken=null;gProfile=null;gConnected=false;gUpdateUI(false);ssync('','');});
+    // token still valid
+    gToken=tok;ssync('⏳ Reconectando...','busy');
+    gSetupStorage().catch(e=>{
+      console.warn('Session restore failed:',e);
+      ssync('⚠️ Reconexão falhou — clique em Entrar','err');
+      // do NOT clear token — let user retry manually
+    });
   }else{
+    // token expired — try silent refresh
     ssync('⏳ Renovando sessão...','busy');
-    try{gTokenClient.requestAccessToken({prompt:''});}catch(e){localStorage.removeItem('g_token');localStorage.removeItem('g_token_exp');gToken=null;gProfile=null;gConnected=false;gUpdateUI(false);ssync('','');}
+    if(!gTokenClient){setTimeout(gTryRestoreSession,1000);return;}
+    try{
+      gTokenClient.requestAccessToken({prompt:''});
+      // callback handles success; on failure keep UI showing user info
+    }catch(e){
+      ssync('⚠️ Sessão expirada — clique em Entrar','err');
+    }
   }
 }
 
